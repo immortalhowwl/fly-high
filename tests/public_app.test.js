@@ -5,7 +5,7 @@ function visitor(){
  const noop=()=>{},canvas=new Proxy({}, {get:()=>noop,set:()=>true});
  function element(){return {textContent:'',append:noop,replaceChildren:noop,getContext:()=>canvas,getBoundingClientRect:()=>({width:600,height:400}),clientWidth:600};}
  const nodes={},buttons=['run','pause','reset','replay','generation'].map(action=>({...element(),dataset:{action}})),calls=[];
- const context=vm.createContext({console,AbortController,setTimeout,clearTimeout,requestAnimationFrame:noop,window:{devicePixelRatio:1},document:{getElementById:id=>nodes[id]??=(element()),createElement:element,createTextNode:element,querySelectorAll:()=>buttons},fetch:async(path)=>{calls.push(path);return {ok:true,json:async()=>({public:true,running:false,cursor:0,report,collector:{status:'disabled_public_replay',fresh:false,rows:[],verified_pairs:0}})};}});
+ const context=vm.createContext({console,URLSearchParams,AbortController,setTimeout,clearTimeout,requestAnimationFrame:noop,window:{location:{search:'?replay=archive'},devicePixelRatio:1},document:{getElementById:id=>nodes[id]??=(element()),createElement:element,createTextNode:element,querySelectorAll:()=>buttons},fetch:async(path)=>{calls.push(path);return {ok:true,json:async()=>({public:true,running:false,cursor:0,report,collector:{status:'disabled_public_replay',fresh:false,rows:[],verified_pairs:0}})};}});
  for(const file of ['motion.js','playback.js','app.js'])vm.runInContext(fs.readFileSync('web/'+file,'utf8'),context);
  return {context,nodes,calls,click:action=>buttons.find(b=>b.dataset.action===action).onclick(),probe:()=>context.window.flyHighProbe()};
 }

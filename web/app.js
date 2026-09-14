@@ -2,12 +2,12 @@
 const $=id=>document.getElementById(id),world=$('world'),ctx=world.getContext('2d');
 let state=null,selected=null,flies=[],generation=0,bar=0,positions=[],visualTime=0,lastFrame=0,lastRender='';
 let playback=null;
-const replayMode=window.location ? new URLSearchParams(window.location.search).get('replay') : null;
+const replayMode=new URLSearchParams(window.location?.search||'').get('replay')||'hypothesis';
 const hypothesisMode=replayMode==='hypothesis',walletMode=replayMode==='wallet',seededMode=walletMode||hypothesisMode;
 const replayEndpoint=hypothesisMode?'/api/hypothesis-replay':'/api/wallet-replay';
 const replayLabel=hypothesisMode?'RETROSPECTIVE WALLET-INSPIRED SIMULATION':'WALLET-SEEDED';
 function overlapText(e){const note=e?.overlap_note||e?.overlap||e?.temporal_overlap;return note?(typeof note==='string'?note:JSON.stringify(note)):'';}
-function retrospectiveLabels(){if(!hypothesisMode)return;for(const node of document.querySelectorAll('.holdout .panel-title'))node.textContent='RETROSPECTIVE FINAL SEGMENT / NOT FORWARD VALIDATION';for(const node of document.querySelectorAll('.holdout p'))node.textContent='Historical experiment; wallet evidence may overlap evaluation. Not an unseen holdout or a recovered wallet strategy.';for(const node of document.querySelectorAll('.market dt'))if(/holdout/i.test(node.textContent))node.textContent='Replay segments';}
+function retrospectiveLabels(){if(!hypothesisMode)return;for(const node of document.querySelectorAll('.holdout .panel-title'))node.textContent='FINAL RESULTS · RETROSPECTIVE SIMULATION';for(const node of document.querySelectorAll('.holdout p:not(.risk-note)'))node.textContent='Historical experiment, not forward validation. Wallet evidence may overlap these prices.';for(const node of document.querySelectorAll('.market dt'))if(/holdout/i.test(node.textContent))node.textContent='Replay segments';}
 let walletEnvelope=null;
 function lineageText(f,r){
  const provenance=f.seed_origin?.provenance;
@@ -15,11 +15,11 @@ function lineageText(f,r){
  const seen=new Set(),origins=new Set();
  function visit(id){if(seen.has(id))return;seen.add(id);const node=births.get(id);if(node?.seed_origin?.provenance?.wallet)origins.add(node.seed_origin.provenance.wallet);for(const p of node?.parents||[])visit(p);}
  for(const p of f.parents||[])visit(p);
- const origin=provenance?(hypothesisMode?'WALLET-INSPIRED HYPOTHESIS FOUNDER · not recovered strategy\n':'WALLET-SEEDED FOUNDER · partial mapping, not recovered strategy\n')+JSON.stringify(f.seed_origin,null,2):origins.size?'DERIVED DESCENDANT · '+[...origins].join(', ')+' · simulated inheritance, not observed wallet behaviour':(f.parents?.length?'PARENT '+f.parents.join(', '):'FOUNDER / RANDOM IMMIGRANT');
- return origin+(f.mutations?.length?'\n'+f.mutations.map(m=>m.gene+': '+number(m.before,5)+' → '+number(m.after,5)).join('\n'):' · no inherited mutations');
+ const origin=provenance?(hypothesisMode?'WALLET-INSPIRED HYPOTHESIS FOUNDER · not recovered strategy\n':'WALLET-SEEDED FOUNDER · partial mapping, not recovered strategy\n')+(provenance.wallet||'supplied parameters'):origins.size?'DERIVED DESCENDANT · '+[...origins].join(', ')+' · simulated inheritance, not observed wallet behaviour':(f.parents?.length?'PARENT '+f.parents.join(', '):'FOUNDER / RANDOM IMMIGRANT');
+ return origin;
 }
 function walletStatus(message,blocked=false){
- text('replay-status',message);$('archive-link').hidden=false;$('archive-link').href='/';
+ text('replay-status',message);$('archive-link').hidden=false;$('archive-link').href='/?replay=archive';
  for(const id of ['export-run','export-ledger']){$(id).href=replayEndpoint;$(id).textContent=id==='export-run'?'EXPORT '+(hypothesisMode?'HYPOTHESIS':'SEEDED')+' ENVELOPE ↗':(hypothesisMode?'HYPOTHESIS':'SEEDED')+' ENVELOPE / EVENTS ↗';}
  for(const button of document.querySelectorAll('[data-action]'))button.disabled=blocked;
 }
@@ -36,7 +36,8 @@ async function pollWallet(){
   const wanted=new URLSearchParams(window.location.search).get('wallet');
   selected=r.generations[0].flies.find(f=>f.seed_origin?.provenance?.wallet===wanted)?.id||null;
   playback=new Playback(r);update();text('connection','● '+replayLabel+' · LOCAL PLAYBACK');text('error','');
-  walletStatus((wanted&&!r.generations[0].flies.some(f=>f.seed_origin?.provenance?.wallet===wanted)?'Requested wallet is not admitted; showing the separate admitted population. ':'')+e.seed_count+' admitted founder(s). Simulation, not wallet execution or recovered strategy. '+overlapText(e)+' '+(e.limits||[]).join(' '));
+  walletStatus((wanted&&!r.generations[0].flies.some(f=>f.seed_origin?.provenance?.wallet===wanted)?'Requested wallet is not admitted; showing the separate admitted population. ':'')+'Simulation · '+e.seed_count+(hypothesisMode?' wallet-inspired founders':' admitted founders')+' · exits assumed. Click a fly to see its story.');
+  text('replay-details','Simulation, not wallet execution or recovered strategy. '+overlapText(e)+' '+(e.limits||[]).join(' '));
  }catch(e){state=null;playback=null;flies=[];text('mode',replayLabel+' / UNAVAILABLE');text('connection','NO SEEDED REPLAY');text('source-badge','NO SEEDED REPLAY');text('source-status','UNAVAILABLE · no archive substituted');text('phase','NO SIMULATION RUN');text('error',e.message);walletStatus('Precomputed wallet replay unavailable. '+e.message,true);}
 }
 const number=(n,d=2)=>Number(n).toLocaleString('en-US',{maximumFractionDigits:d,minimumFractionDigits:d});
@@ -45,7 +46,7 @@ function element(tag,content,cls){const e=document.createElement(tag);e.textCont
 async function request(path,options){const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);try{const response=await fetch(path,{...options,signal:controller.signal});if(!response.ok)throw Error('HTTP '+response.status);return await response.json();}finally{clearTimeout(timer);}}
 function syncPlayback(){state.cursor=Math.floor(playback.cursor);state.running=playback.running;}
 async function poll(){try{const next=await request('/api/state'+(state?'?brief=1':''));state={...state,...next};if(state.public&&!playback)playback=new Playback(state.report);update();text('connection',state.public?'● HISTORICAL ARCHIVE · LOCAL PLAYBACK':'● LOCAL ENGINE CONNECTED');text('error','');}catch(e){text('connection','DISCONNECTED');text('error',e.message);}finally{if(!state?.public)setTimeout(poll,1000);}}
-for(const button of document.querySelectorAll('[data-action]'))button.onclick=async()=>{try{if(!state)return;if(playback){playback.control(button.dataset.action);syncPlayback();}else state=await request('/api/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:button.dataset.action})});update();}catch(e){text('error',e.message);}};
+for(const button of document.querySelectorAll('[data-action]'))button.onclick=async()=>{try{if(!state)return;if(playback){playback.control(button.dataset.action==='run'&&playback.cursor>=playback.end?'replay':button.dataset.action);syncPlayback();}else state=await request('/api/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:button.dataset.action})});update();}catch(e){text('error',e.message);}};
 function update(){
  const r=state.report;generation=Math.floor(state.cursor/r.split);bar=state.cursor%r.split;const gen=r.generations[generation];flies=gen.flies;
  if(!flies.some(f=>f.id===selected))selected=flies[0].id;
@@ -60,11 +61,12 @@ function update(){
  const observed=r.bars[bar];
  const input=element('div','','token');
  input.append(element('strong',typeof r.source==='object'?r.source.symbol+' / USD':'RUN INPUT / '+modeLabel),element('div','$'+number(observed.price,8),'price'),element('small',new Date(observed.timestamp*1000).toISOString()),element('small',r.methodology.historical_liquidity===false?'EXECUTION LIQUIDITY ASSUMPTION $'+number(observed.liquidity):'INPUT LIQUIDITY $'+number(observed.liquidity)));
- $('tokens').append(input,element('p','SEPARATE MARKET WATCH · snapshots below do not drive this archived run.'));
+ $('tokens').append(input);
+ if(c.rows?.length)$('tokens').append(element('p','Separate market snapshots · not replay inputs.'));
  for(const row of (c.rows||[]).slice(0,5)){
   const e=element('div','','token');e.append(element('strong',row.symbol+' / '+row.quote),element('div','$'+number(row.price,8),'price'),element('small','LIQUIDITY $'+number(row.liquidity)),element('small','CHAIN '+row.chain),element('small','TOKEN '+row.token_address),element('small','POOL '+row.pair_address));$('tokens').append(e);
  }
- if(!c.rows?.length)$('tokens').append(element('p',state.public?'Public view replays a fixed, precomputed historical report. Controls affect only this tab; no retraining or live trading.':'No verified market snapshots. Start the explicit collector; no fallback data is displayed.'));
+ if(!c.rows?.length&&!state.public)$('tokens').append(element('p','No verified market snapshots. No fallback data is displayed.'));
  const key=generation+':'+selected;
  if(lastRender!==key){$('roster').replaceChildren();for(const fly of flies){const b=element('button',fly.id,fly.id===selected?'active':'');b.onclick=()=>{selected=fly.id;update();};$('roster').append(b);}lastRender=key;}
  inspect();
@@ -86,18 +88,18 @@ function inspect(){
   const target=state.report.generations.findIndex(g=>g.flies.some(x=>x.id===parent));
   if(target>=0){const button=element('button','INSPECT PARENT '+parent);button.onclick=()=>{playback?.control('pause');if(playback)playback.cursor=target*state.report.split;state.cursor=target*state.report.split;state.running=false;selected=parent;update();};$('lineage').append(button);}
  }
- if(hypothesisMode){
-  const details=element('details'),summary=element('summary','SIMULATED TRADES / RESULTS');
-  const visibleTrades=(f.result.trades||[]).filter(t=>t.timestamp<=d.timestamp);
-  details.append(summary,element('pre',JSON.stringify({as_of:d.timestamp,equity:d.equity,trades:visibleTrades,cancelled_orders:f.result.decisions.slice(0,bar+1).filter(x=>x.action==='cancel'),...(bar===state.report.split-1?{final_return:f.result.return,drawdown:f.result.drawdown,fees:f.result.fees,fitness:f.result.fitness,mark_note:f.result.mark_note}: {})},null,2)));
-  if(!visibleTrades.length)details.append(element('p','No simulated fills through this observation. No wallet trades are implied.'));
-  $('lineage').append(details);
- }
+ text('changes',f.mutations?.length?f.mutations.map(m=>m.gene.replaceAll('_',' ')+': '+number(m.before,5)+' → '+number(m.after,5)).join('\n'):'No inherited changes. Starting parameters are unchanged.');
+ const visibleTrades=(f.result.trades||[]).filter(t=>t.timestamp<=d.timestamp);
+ $('trades').replaceChildren();
+ for(const trade of visibleTrades.slice(-5))$('trades').append(element('p',(trade.side||trade.action||'fill').toUpperCase()+' · '+(trade.price!=null?'$'+number(trade.price,8)+' · ':'')+new Date(trade.timestamp*1000).toISOString()));
+ if(!visibleTrades.length)$('trades').append(element('p','No simulated trades yet.'));
+ else $('trades').append(element('small',visibleTrades.length+' simulated fills so far. Latest five shown; full list in Details.'));
+ text('raw-evidence',JSON.stringify({origin:f.seed_origin||null,parents:f.parents,mutations:f.mutations,as_of:d.timestamp,equity:d.equity,trades:visibleTrades,cancelled_orders:f.result.decisions.slice(0,bar+1).filter(x=>x.action==='cancel'),...(bar===state.report.split-1?{final_return:f.result.return,drawdown:f.result.drawdown,fees:f.result.fees,fitness:f.result.fitness,mark_note:f.result.mark_note}: {})},null,2));
  text('decision',d.action.toUpperCase()+' · '+d.reason+(d.pending?' → '+d.pending.toUpperCase()+' QUEUED FOR NEXT OBSERVATION':''));
  const c=$('curve'),x=c.getContext('2d');c.width=c.clientWidth*2;c.height=116;x.clearRect(0,0,c.width,c.height);const low=Math.min(995,...curve.map(p=>p.equity)),high=Math.max(1005,...curve.map(p=>p.equity));x.beginPath();curve.forEach((p,i)=>{const px=i/Math.max(1,state.report.split-1)*c.width,py=105-(p.equity-low)/(high-low)*94;i?x.lineTo(px,py):x.moveTo(px,py);});x.strokeStyle='#00ff85';x.lineWidth=2;x.stroke();
 }
 function draw(ts){
- const elapsed=Math.min(.05,(ts-lastFrame)/1000||0);lastFrame=ts;if(state?.running)visualTime+=elapsed;
+ const elapsed=Math.min(.05,(ts-lastFrame)/1000||0);lastFrame=ts;if(state)visualTime+=elapsed;
  if(playback?.running){const previous=state.cursor;playback.tick(elapsed);syncPlayback();if(previous!==state.cursor||!state.running)update();}
  const rect=world.getBoundingClientRect(),w=rect.width,h=rect.height,dpr=window.devicePixelRatio||1;
  if(world.width!==Math.round(w*dpr)||world.height!==Math.round(h*dpr)){world.width=Math.round(w*dpr);world.height=Math.round(h*dpr);}

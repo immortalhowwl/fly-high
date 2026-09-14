@@ -254,23 +254,27 @@
     const replayLink = state.kind === 'wallet' ? walletReplayLink(replayEnvelope, state.id) : null;
     const hypothesisLink = state.kind === 'wallet' ? hypothesisReplayLink(hypothesisEnvelope,state.id) : null;
     if (state.kind === 'wallet') {
-      box.append(el('h3', 'Wallet → fly evidence / canonical admission'));
+      box.append(el('h3', 'Wallet → experiment'));
       behaviorEvidence(box);
       const mappings = (replayEnvelope?.mappings || []).filter(m => m.provenance?.wallet === state.id);
-      box.append(el('p', replayLink ? 'Admitted founder exists in this completed simulation. Partial mapping, not recovered wallet strategy.' : 'No exact wallet-to-fly mapping established for this wallet. No admitted replay founder. ' + (replayEnvelope?.blocked_reasons || ['Wallet replay unavailable or wallet not admitted.']).join(' ')));
-      mappings.forEach(mapping => box.append(el('pre', text(mapping))));
+      const admission = el('details'); admission.append(el('summary', 'Details · strict replay admission'));
+      admission.append(el('p', replayLink ? 'Admitted founder exists in this completed simulation. Partial mapping, not recovered wallet strategy.' : 'No exact wallet-to-fly mapping established for this wallet. No admitted replay founder. ' + (replayEnvelope?.blocked_reasons || ['Wallet replay unavailable or wallet not admitted.']).join(' ')));
+      const evidence = el('details'); evidence.append(el('summary', 'Details · canonical evidence'));
+      mappings.forEach(mapping => evidence.append(el('pre', text(mapping))));
       if (replayLink) {
         const founder = replayEnvelope.replay.generations[0].flies.find(f => f.seed_origin?.provenance?.wallet === state.id);
-        box.append(el('pre', text(founder.seed_origin.provenance)));
+        evidence.append(el('pre', text(founder.seed_origin.provenance)));
       }
+      admission.append(evidence); box.append(admission);
     }
-    box.append(el('h3', 'Continue to Colony'));
-    if (replayLink) box.append(link('Open admitted wallet replay ↗', replayLink, 'colony'));
+    box.append(el('h3', 'Watch the experiment'));
+    if (replayLink) box.append(link('Open strict wallet replay ↗', replayLink, 'colony'));
     if(hypothesisLink){
       const founder=hypothesisEnvelope.replay.generations[0].flies.find(f=>f.seed_origin?.provenance?.wallet===state.id);
-      box.append(el('p','RETROSPECTIVE WALLET-INSPIRED SIMULATION · evaluated hypothesis, not forward validation or recovered strategy.'),el('p',text(hypothesisEnvelope.overlap_note||hypothesisEnvelope.overlap||hypothesisEnvelope.temporal_overlap||'')),el('pre',text(founder.seed_origin)),link('Open wallet-inspired fly → lineage / trades ↗',hypothesisLink,'colony'));
+      const details=el('details'); details.append(el('summary','Details · experiment evidence'),el('p',text(hypothesisEnvelope.overlap_note||hypothesisEnvelope.overlap||hypothesisEnvelope.temporal_overlap||'')),el('pre',text(founder.seed_origin)));
+      box.append(el('p','Historical simulation · exits assumed · not forward validation.'),link('Watch this wallet’s experiment → fly, changes and trades ↗',hypothesisLink,'colony'),details);
     }
-    box.append(el('p', 'Original archive is separate and does not represent this wallet.'), link('Open original unseeded archive ↗', '/', 'colony'));
+    box.append(el('p', 'Original archive is separate and does not represent this wallet.'), link('Original archive ↗', '/?replay=archive', 'secondary'));
   }
   function render() {
     doc.querySelectorAll('[data-tab]').forEach(button => { const active = button.dataset.tab === state.tab; button.setAttribute('aria-selected', String(active)); button.tabIndex = active ? 0 : -1; });

@@ -29,7 +29,7 @@ test('research only links wallets with actual seeded founders, not mapping indic
 test('blocked wallet mode never loads archive and exposes reasons and correct exports',async()=>{
  const a=visitor({status:'blocked',seed_count:0,replay:null,blocked_reasons:['Cash evidence missing']});await settle();
  assert.deepEqual(a.calls,['/api/wallet-replay']);assert.equal(a.probe().flies,0);
- assert.match(a.nodes.error.textContent,/Cash evidence missing/);assert.equal(a.nodes['archive-link'].href,'/');
+ assert.match(a.nodes.error.textContent,/Cash evidence missing/);assert.equal(a.nodes['archive-link'].href,'/?replay=archive');
  assert.equal(a.nodes['export-run'].href,'/api/wallet-replay');assert.equal(a.nodes['export-ledger'].href,'/api/wallet-replay');
  assert.ok(a.buttons.every(b=>b.disabled));
 });
@@ -42,7 +42,7 @@ test('completed wallet mode uses supplied replay and shows founder and descendan
  const birth=report.events.find(e=>e.kind==='birth'&&e.fly===founder.id);birth.seed_origin=founder.seed_origin;
  const a=visitor({status:'completed',seed_count:1,replay:report,limits:['Allocation only']});await settle();
  assert.deepEqual(a.calls,['/api/wallet-replay']);assert.equal(a.probe().flies,24);assert.match(a.nodes.mode.textContent,/WALLET-SEEDED/);
- assert.match(a.nodes.lineage.textContent,/wallet-a/);assert.match(a.nodes.lineage.textContent,/sample_count/);assert.match(a.nodes['source-status'].textContent,/SIMULATED/);
+ assert.match(a.nodes.lineage.textContent,/wallet-a/);assert.match(a.nodes['raw-evidence'].textContent,/sample_count/);assert.match(a.nodes['source-status'].textContent,/SIMULATED/);
  const description=vm.runInContext('lineageText({id:"child",parents:["'+founder.id+'"],mutations:[]},state.report)',a.context);
  assert.match(description,/DERIVED DESCENDANT/);assert.match(description,/wallet-a/);assert.match(description,/not observed wallet/);
 });
