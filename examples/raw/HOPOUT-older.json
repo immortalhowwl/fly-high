@@ -1,0 +1,1 @@
+{"data":{"id":"3ae2839c-b5d5-408e-9637-429412a1f522","type":"ohlcv_request_response","attributes":{"ohlcv_list":[]}},"meta":{"base":{"name":"HOP OUT","symbol":"HOPOUT","coingecko_coin_id":null,"address":"0x78f13072b0f6ebc7fd0b5359c9b4e09c6160cff8"},"quote":{"name":"WETH","symbol":"WETH","coingecko_coin_id":null,"address":"0x0000000000000000000000000000000000000000"}}}

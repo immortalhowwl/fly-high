@@ -1,0 +1,66 @@
+[
+  {
+    "url": "https://api.dexscreener.com/latest/dex/tokens/0xac79255f6f404eba14f316e8669d76573a2d7b1e",
+    "requested_at": "2026-09-14T15:54:24.294808+00:00",
+    "received_at": "2026-09-14T15:54:24.552986+00:00",
+    "http_status": "200",
+    "file": "raw/COPY-dex-attempt1.json",
+    "sha256": "2fe4ebc690276bf96227ce0f80f4616f7ff1c317c228377a92a206d26f16ea20"
+  },
+  {
+    "url": "https://api.geckoterminal.com/api/v2/networks/robinhood/pools/0x827534609c9f74fc7d950b91e268d22419611e8a1d7a557dec6716cba11ee605/ohlcv/minute?aggregate=5&limit=250&currency=usd&token=0xac79255f6f404eba14f316e8669d76573a2d7b1e&include_empty_intervals=false",
+    "requested_at": "2026-09-14T15:54:27.553424+00:00",
+    "received_at": "2026-09-14T15:54:33.919105+00:00",
+    "http_status": "200",
+    "file": "raw/COPY-5m-attempt1.json",
+    "sha256": "44d146262eec123657930cc792ffe02809452780d6995178ff970d43de90d774"
+  },
+  {
+    "url": "https://api.dexscreener.com/latest/dex/tokens/0x78f13072b0f6ebc7fd0b5359c9b4e09c6160cff8",
+    "requested_at": "2026-09-14T15:54:36.922704+00:00",
+    "received_at": "2026-09-14T15:54:37.273796+00:00",
+    "http_status": "200",
+    "file": "raw/HOPOUT-dex-attempt1.json",
+    "sha256": "7eb446e56b4d7689638d4df45301815166d1d5fda6dece9b1d8164639eb0352f"
+  },
+  {
+    "url": "https://api.geckoterminal.com/api/v2/networks/robinhood/pools/0x4d3996eb410581e9f59480f9c3c9cbd8070d54dc99044e1379985a7afba4fdea/ohlcv/minute?aggregate=5&limit=250&currency=usd&token=0x78f13072b0f6ebc7fd0b5359c9b4e09c6160cff8&include_empty_intervals=false",
+    "requested_at": "2026-09-14T15:54:40.274311+00:00",
+    "received_at": "2026-09-14T15:54:42.405915+00:00",
+    "http_status": "200",
+    "file": "raw/HOPOUT-5m-attempt1.json",
+    "sha256": "6651f481c5cd98a22eb3861959c00e77212f7a39637b03adfead6ce1f1f40d92"
+  },
+  {
+    "url": "https://api.dexscreener.com/latest/dex/tokens/0xbabb2c60f2bc9dc39de6c37ba1de11491cae2242",
+    "requested_at": "2026-09-14T15:54:45.410538+00:00",
+    "received_at": "2026-09-14T15:54:45.699895+00:00",
+    "http_status": "200",
+    "file": "raw/GPTHEIST-dex-attempt1.json",
+    "sha256": "bfddd6508cbe8beebc6c625ed7b6aca6ac6c5d4451e0a24ccb2c21a00245d8a8"
+  },
+  {
+    "url": "https://api.geckoterminal.com/api/v2/networks/robinhood/pools/0xc858ef9792a139b88ff4049031340036f04cd928956a010a704ac3a1d4ea92ac/ohlcv/minute?aggregate=5&limit=250&currency=usd&token=0xbabb2c60f2bc9dc39de6c37ba1de11491cae2242&include_empty_intervals=false",
+    "requested_at": "2026-09-14T15:54:48.700333+00:00",
+    "received_at": "2026-09-14T15:54:49.229968+00:00",
+    "http_status": "200",
+    "file": "raw/GPTHEIST-5m-attempt1.json",
+    "sha256": "b8f3eb7874af8ca83b2d500c1aa50e5f7964a4e8df7f702b45c95c6db97bb921"
+  },
+  {
+    "url": "https://api.geckoterminal.com/api/v2/networks/robinhood/pools/0x4d3996eb410581e9f59480f9c3c9cbd8070d54dc99044e1379985a7afba4fdea/ohlcv/minute?aggregate=5&limit=250&currency=usd&token=0x78f13072b0f6ebc7fd0b5359c9b4e09c6160cff8&include_empty_intervals=false&before_timestamp=1789136399",
+    "requested_at": "2026-09-14T15:55:20.325800+00:00",
+    "received_at": "2026-09-14T15:55:20.912185+00:00",
+    "http_status": "200",
+    "file": "raw/HOPOUT-older.json",
+    "sha256": "c40eb7c241dfa7e4c25e26008bd559e4313f209244329a349741466c9288dc92"
+  },
+  {
+    "url": "https://api.geckoterminal.com/api/v2/networks/robinhood/pools/0xc858ef9792a139b88ff4049031340036f04cd928956a010a704ac3a1d4ea92ac/ohlcv/minute?aggregate=5&limit=250&currency=usd&token=0xbabb2c60f2bc9dc39de6c37ba1de11491cae2242&include_empty_intervals=false&before_timestamp=1788882899",
+    "requested_at": "2026-09-14T15:55:23.912671+00:00",
+    "received_at": "2026-09-14T15:55:35.221081+00:00",
+    "http_status": "200",
+    "file": "raw/GPTHEIST-older.json",
+    "sha256": "887054d93e01afca2b9bc572ee6bff881fee2dcaf186493dc0c003a8371729bb"
+  }
+]
