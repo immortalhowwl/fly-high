@@ -2,6 +2,38 @@
 const $=id=>document.getElementById(id),world=$('world'),ctx=world.getContext('2d');
 let state=null,selected=null,flies=[],generation=0,bar=0,positions=[],visualTime=0,lastFrame=0,lastRender='';
 let playback=null;
+const walletMode=!!window.location && new URLSearchParams(window.location.search).get('replay')==='wallet';
+let walletEnvelope=null;
+function lineageText(f,r){
+ const provenance=f.seed_origin?.provenance;
+ const births=new Map((r.events||[]).filter(e=>e.kind==='birth').map(e=>[e.fly,e]));
+ const seen=new Set(),origins=new Set();
+ function visit(id){if(seen.has(id))return;seen.add(id);const node=births.get(id);if(node?.seed_origin?.provenance?.wallet)origins.add(node.seed_origin.provenance.wallet);for(const p of node?.parents||[])visit(p);}
+ for(const p of f.parents||[])visit(p);
+ const origin=provenance?'WALLET-SEEDED FOUNDER · partial mapping, not recovered strategy\n'+JSON.stringify(provenance,null,2):origins.size?'DERIVED DESCENDANT · '+[...origins].join(', ')+' · simulated inheritance, not observed wallet behaviour':(f.parents?.length?'PARENT '+f.parents.join(', '):'FOUNDER / RANDOM IMMIGRANT');
+ return origin+(f.mutations?.length?'\n'+f.mutations.map(m=>m.gene+': '+number(m.before,5)+' → '+number(m.after,5)).join('\n'):' · no inherited mutations');
+}
+function walletStatus(message,blocked=false){
+ text('replay-status',message);$('archive-link').hidden=false;$('archive-link').href='/';
+ for(const id of ['export-run','export-ledger']){$(id).href='/api/wallet-replay';$(id).textContent=id==='export-run'?'EXPORT SEEDED ENVELOPE ↗':'SEEDED ENVELOPE / EVENTS ↗';}
+ for(const button of document.querySelectorAll('[data-action]'))button.disabled=blocked;
+}
+async function pollWallet(){
+ walletStatus('Loading precomputed wallet replay…',true);text('big-count','0');
+ try{
+  walletEnvelope=await request('/api/wallet-replay');
+  const e=walletEnvelope,r=e.replay;
+  if(e.status!=='completed'||!Number.isInteger(e.seed_count)||e.seed_count<1||!r?.generations?.length||!r.split){
+   const reason=(e.blocked_reasons||[]).join('\n')||'No admitted wallet seeds in a completed replay.';
+   text('mode',e.status==='blocked'?'WALLET-SEEDED / BLOCKED':'WALLET-SEEDED / UNAVAILABLE');text('connection','NO SEEDED REPLAY');text('source-badge','NO SEEDED REPLAY');text('source-status','NOT RUN · no archive substituted');text('phase','NO SIMULATION RUN');text('error',reason);walletStatus(reason,true);return;
+  }
+  state={public:true,running:false,cursor:0,report:r,collector:{rows:[],fresh:false,status:'disabled_wallet_replay'}};
+  const wanted=new URLSearchParams(window.location.search).get('wallet');
+  selected=r.generations[0].flies.find(f=>f.seed_origin?.provenance?.wallet===wanted)?.id||null;
+  playback=new Playback(r);update();text('connection','● WALLET-SEEDED · LOCAL PLAYBACK');text('error','');
+  walletStatus((wanted&&!r.generations[0].flies.some(f=>f.seed_origin?.provenance?.wallet===wanted)?'Requested wallet is not admitted; showing the separate admitted population. ':'')+e.seed_count+' admitted founder(s). Simulation, not wallet execution. '+(e.limits||[]).join(' '));
+ }catch(e){state=null;playback=null;flies=[];text('mode','WALLET-SEEDED / UNAVAILABLE');text('connection','NO SEEDED REPLAY');text('source-badge','NO SEEDED REPLAY');text('source-status','UNAVAILABLE · no archive substituted');text('phase','NO SIMULATION RUN');text('error',e.message);walletStatus('Precomputed wallet replay unavailable. '+e.message,true);}
+}
 const number=(n,d=2)=>Number(n).toLocaleString('en-US',{maximumFractionDigits:d,minimumFractionDigits:d});
 const text=(id,value)=>$(id).textContent=value;
 function element(tag,content,cls){const e=document.createElement(tag);e.textContent=content;if(cls)e.className=cls;return e;}
@@ -12,13 +44,13 @@ for(const button of document.querySelectorAll('[data-action]'))button.onclick=as
 function update(){
  const r=state.report;generation=Math.floor(state.cursor/r.split);bar=state.cursor%r.split;const gen=r.generations[generation];flies=gen.flies;
  if(!flies.some(f=>f.id===selected))selected=flies[0].id;
- const modeLabel=r.mode==='historical_prices_assumed_liquidity'?'MARKET REPLAY':r.mode.toUpperCase();
+ const modeLabel=walletMode?'WALLET-SEEDED':r.mode==='historical_prices_assumed_liquidity'?'MARKET REPLAY':r.mode.toUpperCase();
  text('mode',modeLabel);text('phase',state.running?'ARCHIVED TRAINING REPLAY RUNNING':'ARCHIVED REPLAY PAUSED');text('generation','GEN '+String(generation).padStart(2,'0'));
  text('bar','OBSERVATION '+(bar+1)+' / '+r.split);text('big-count',flies.length);text('diversity',gen.diversity+' UNIQUE GENOMES');
  const sourceLabel=typeof r.source==='object'?r.source.symbol+' · '+r.source.provider+' · execution liquidity assumed':(r.source||'seeded offline fixture');
  text('source-badge',modeLabel+' · '+sourceLabel);
  const c=state.collector;
- text('source-status',state.public?'HISTORICAL ARCHIVE · NOT LIVE · NO CONTINUOUS EVOLUTION':(c.fresh?'LIVE SNAPSHOTS':'SNAPSHOTS / '+c.status.toUpperCase())+' · '+c.verified_pairs+' PAIRS'+(c.observed_at?' · '+new Date(c.observed_at*1000).toISOString():''));
+ text('source-status',walletMode?'WALLET-SEEDED · SIMULATED · HISTORICAL PRICES · ASSUMED LIQUIDITY · NOT LIVE':state.public?'HISTORICAL ARCHIVE · NOT LIVE · NO CONTINUOUS EVOLUTION':(c.fresh?'LIVE SNAPSHOTS':'SNAPSHOTS / '+c.status.toUpperCase())+' · '+c.verified_pairs+' PAIRS'+(c.observed_at?' · '+new Date(c.observed_at*1000).toISOString():''));
  $('tokens').replaceChildren();
  const observed=r.bars[bar];
  const input=element('div','','token');
@@ -33,7 +65,7 @@ function update(){
  inspect();
  $('events').replaceChildren();const visible=r.events.filter(e=>e.generation<=generation&&e.kind!=='holdout'&&e.kind!=='freeze'&&(e.kind==='birth'||e.generation<generation));
  for(const e of visible.slice(-18).reverse()){
-  const line=element('div');line.append(element('strong','#'+e.sequence+' '+e.kind.toUpperCase()),document.createTextNode(' · '+(e.fly||e.best||'')+' · GEN '+e.generation+(e.parents?.length?' ← '+e.parents.join(', '):'')));$('events').append(line);
+  const line=element('div');line.append(element('strong','#'+e.sequence+' '+e.kind.toUpperCase()),document.createTextNode(' · '+(e.fly||e.best||'')+' · GEN '+e.generation+(e.parents?.length?' ← '+e.parents.join(', '):'')+(e.seed_origin?' · SEEDED FOUNDER '+(e.seed_origin.provenance?.wallet||'supplied genome'):'')));$('events').append(line);
  }
  $('holdout').replaceChildren();
  if(state.cursor>=r.split*r.generations.length-1){for(const [name,result] of [['CHAMPION '+r.champion.id,r.holdout],...Object.entries(r.baselines)]){const row=element('div','','holdout-row');row.append(element('span',name.toUpperCase()),element('b',number(result.return*100)+'%'));$('holdout').append(row);}}
@@ -44,7 +76,7 @@ function inspect(){
  text('fly-title',f.id);text('fly-meta','BORN GEN '+f.born+' · '+(curve.at(-1).holding?'HOLDING SIMULATED POSITION':'WATCHING / FLAT'));
  text('equity','$'+number(d.equity));let peak=1000,dd=0;for(const p of curve){peak=Math.max(peak,p.equity);dd=Math.max(dd,(peak-p.equity)/peak);}text('drawdown',number(dd*100)+'%');
  $('genome').replaceChildren();for(const [k,v] of Object.entries(f.genome))$('genome').append(element('dt',k.replaceAll('_',' ').toUpperCase()),element('dd',Number.isInteger(v)?v:number(v,4)));
- text('lineage',(f.parents.length?'PARENT '+f.parents.join(', '):'FOUNDER / RANDOM IMMIGRANT')+(f.mutations.length?'\n'+f.mutations.map(m=>m.gene+': '+number(m.before,5)+' → '+number(m.after,5)).join('\n'):' · no inherited mutations'));
+ text('lineage',lineageText(f,state.report));
  text('decision',d.action.toUpperCase()+' · '+d.reason+(d.pending?' → '+d.pending.toUpperCase()+' QUEUED FOR NEXT OBSERVATION':''));
  const c=$('curve'),x=c.getContext('2d');c.width=c.clientWidth*2;c.height=116;x.clearRect(0,0,c.width,c.height);const low=Math.min(995,...curve.map(p=>p.equity)),high=Math.max(1005,...curve.map(p=>p.equity));x.beginPath();curve.forEach((p,i)=>{const px=i/Math.max(1,state.report.split-1)*c.width,py=105-(p.equity-low)/(high-low)*94;i?x.lineTo(px,py):x.moveTo(px,py);});x.strokeStyle='#c2ff5a';x.lineWidth=2;x.stroke();
 }
@@ -72,4 +104,4 @@ function draw(ts){
 }
 world.onclick=e=>{const rect=world.getBoundingClientRect(),x=e.clientX-rect.left,y=e.clientY-rect.top;const hit=positions.map(p=>({p,d:Math.hypot(p.x-x,p.y-y)})).sort((a,b)=>a.d-b.d)[0];if(hit&&hit.d<35){selected=hit.p.fly.id;update();}};
 window.flyHighProbe=()=>({flies:flies.length,selected,generation,bar,positions:positions.map(p=>({id:p.fly.id,x:p.x,y:p.y,phase:p.phase})),running:state?.running});
-requestAnimationFrame(draw);poll();
+requestAnimationFrame(draw);if(walletMode)pollWallet();else poll();

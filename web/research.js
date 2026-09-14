@@ -1,4 +1,4 @@
-/* Read-only upstream research. No synthetic rows, scores, execution or Colony mapping. */
+/* Read-only upstream research and optional precomputed seed admission. No invented rows or execution. */
 (function (root) {
   'use strict';
   const TABS = ['wallets', 'tape', 'tokens', 'method'], PAGE = 50;
@@ -58,10 +58,16 @@
   function candlesOf(token) {
     return (Array.isArray(token.candles) ? token.candles : []).map(c => ({ts: epoch(Array.isArray(c) ? c[0] : c.ts), close: number(Array.isArray(c) ? c[4] : c.close)})).filter(c => Number.isFinite(c.ts) && c.close !== null && c.close >= 0).sort((a,b) => a.ts - b.ts);
   }
-  const api = {money, epoch, date, freshness, parseHash, route, normalize, rowsFor, matchingFills, supportedRules, safeURL, candlesOf};
+  function walletReplayLink(envelope, wallet) {
+    if (!wallet || envelope?.status !== 'completed' || !Number.isInteger(envelope.seed_count) || envelope.seed_count < 1) return null;
+    const founders = envelope.replay?.generations?.[0]?.flies || [];
+    return founders.some(f => f.seed_origin?.provenance?.wallet === wallet) ? '/?replay=wallet&wallet=' + encodeURIComponent(wallet) : null;
+  }
+  const api = {walletReplayLink, money, epoch, date, freshness, parseHash, route, normalize, rowsFor, matchingFills, supportedRules, safeURL, candlesOf};
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (!root.document) return;
   const doc = root.document, $ = id => doc.getElementById(id);
+  let replayEnvelope = null;
   let data = null, state = parseHash(root.location.hash), page = 0, loading = false;
   function el(tag, value, cls) { const node = doc.createElement(tag); if (value != null) node.textContent = String(value); if (cls) node.className = cls; return node; }
   function link(value, href, cls) { const a = el('a', value, cls); a.href = href; return a; }
@@ -110,7 +116,7 @@
       ['03 / PnL is not executable profit', 'Realized, unrealized and net PnL are shown separately as reported. Win rate is source-reported in percent. Unknown values stay blank (—), not zero. Marks, thin liquidity, missing fees and incomplete opening inventory can make returns misleading. A sell alone does not prove a full exit.'],
       ['04 / Evidence before rules', 'Wallet dossiers show only observed rules with supporting fill IDs present in the loaded wallet tape. Missing or incomplete history means insufficient validated history, not an inferred strategy. Behavioural descriptions do not establish trading intent or predictive skill.'],
       ['05 / Freshness', 'Snapshot age is time since as_of, not time since the latest on-chain fill and not a polling SLA. This UI labels snapshots at least 15 minutes old STALE. Refresh explicitly fetches a new response; it cannot make an upstream archive live.'],
-      ['06 / Research ≠ Colony execution', 'Colony is a separate simulation/replay surface. No exact wallet-to-fly mapping is asserted here. Opening Colony does not copy a wallet, seed an agent or execute a trade. No wallet connection, trading orders or Telegram access are implemented in this portal.'],
+      ['06 / Research ≠ Colony execution', 'Colony is a separate simulation/replay surface. A wallet replay link appears only when that wallet is present as an admitted founder in the precomputed replay. Canonical allocation evidence is separate from indexer tape; other genes may retain defaults. Opening a replay does not copy a wallet or execute a trade. No wallet connection, trading orders or Telegram access are implemented in this portal.'],
       ['07 / Token charts', 'A price line is drawn only from actual timestamped OHLCV candles supplied for the selected token. No candles means no chart. Token summary marks are not a time series. Risk flags come from the source; their absence is not a safety assessment.']
     ];
     items.forEach(([title, description]) => { const article = el('article'); article.append(el('h3', title), el('p', description)); section.append(article); });
@@ -162,7 +168,20 @@
       if (!rules.length) box.append(el('p', 'Insufficient validated history to describe this wallet’s strategy. Loaded fills do not establish position sizing, inventory, intent or a repeatable rule.'));
       rules.forEach(rule => { box.append(el('p', rule.description), el('span', 'Supporting fill IDs: ' + rule.fill_ids.join(', '), 'secondary')); });
     }
-    box.append(el('h3', 'Continue to Colony'), el('p', 'Explore the separate simulation. No exact wallet-to-fly mapping or automatic strategy seeding is established.'), link('Open Colony ↗', '/', 'colony'));
+    const replayLink = state.kind === 'wallet' ? walletReplayLink(replayEnvelope, state.id) : null;
+    if (state.kind === 'wallet') {
+      box.append(el('h3', 'Canonical seed evidence / admission'));
+      const mappings = (replayEnvelope?.mappings || []).filter(m => m.provenance?.wallet === state.id);
+      box.append(el('p', replayLink ? 'Admitted founder exists in this completed simulation. Partial mapping, not recovered wallet strategy.' : 'No exact wallet-to-fly mapping established for this wallet. No admitted replay founder. ' + (replayEnvelope?.blocked_reasons || ['Wallet replay unavailable or wallet not admitted.']).join(' ')));
+      mappings.forEach(mapping => box.append(el('pre', text(mapping))));
+      if (replayLink) {
+        const founder = replayEnvelope.replay.generations[0].flies.find(f => f.seed_origin?.provenance?.wallet === state.id);
+        box.append(el('pre', text(founder.seed_origin.provenance)));
+      }
+    }
+    box.append(el('h3', 'Continue to Colony'));
+    if (replayLink) box.append(link('Open admitted wallet replay ↗', replayLink, 'colony'));
+    box.append(el('p', 'Original archive is separate and does not represent this wallet.'), link('Open original unseeded archive ↗', '/', 'colony'));
   }
   function render() {
     doc.querySelectorAll('[data-tab]').forEach(button => { const active = button.dataset.tab === state.tab; button.setAttribute('aria-selected', String(active)); button.tabIndex = active ? 0 : -1; });
@@ -173,6 +192,14 @@
   async function load() {
     if (loading) return; loading = true; $('refresh').disabled = true; $('research-panel').setAttribute('aria-busy', 'true'); showStatus(data ? 'Refreshing… Previous snapshot remains visible.' : 'Loading research snapshot…');
     const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 20000);
+    // Independent optional request: failure must never prevent research rendering.
+    const replayController = new AbortController(), replayTimer = setTimeout(() => replayController.abort(), 15000);
+    replayEnvelope = null;
+    root.fetch('/api/wallet-replay', {cache: 'no-store', signal: replayController.signal})
+      .then(response => response.ok ? response.json() : null)
+      .then(envelope => { replayEnvelope = envelope; if (data) render(); })
+      .catch(() => { replayEnvelope = null; if (data) render(); })
+      .finally(() => clearTimeout(replayTimer));
     try {
       const response = await root.fetch('/api/research', {headers: {Accept: 'application/json'}, cache: 'no-store', signal: controller.signal});
       if (!response.ok) throw new Error('Research API returned HTTP ' + response.status);

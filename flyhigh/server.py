@@ -81,6 +81,23 @@ def make_server(port=8765, report=None, directory=None, public=False):
                        if public else lab.state())
                 if urlsplit(self.path).query=='brief=1': state.pop('report',None)
                 self.send(200,state)
+            elif path=='/api/wallet-replay':
+                try:
+                    envelope=json.loads((lab.directory/'wallet-seeded.report.json').read_text())
+                    if not isinstance(envelope,dict) or envelope.get('status') not in ('blocked','completed'):
+                        raise ValueError('invalid envelope')
+                    count=envelope.get('seed_count')
+                    if type(count) is not int or count < 0:
+                        raise ValueError('invalid seed count')
+                    if envelope['status']=='completed' and (count < 1 or not isinstance(envelope.get('replay'),dict) or not envelope['replay'].get('generations') or envelope['replay'].get('split',0) < 1):
+                        raise ValueError('invalid completed replay')
+                    if envelope['status']=='blocked' and (count != 0 or envelope.get('replay') is not None):
+                        raise ValueError('invalid blocked replay')
+                    json.dumps(envelope,allow_nan=False)
+                except (OSError,ValueError,TypeError):
+                    self.send(503,{'status':'unavailable','seed_count':0,'replay':None,
+                                   'blocked_reasons':['Precomputed wallet replay is missing or invalid.']})
+                else: self.send(200,envelope)
             elif path=='/api/report': self.send(200,lab.report)
             elif path=='/api/events': self.send(200,lab.report['events'])
             elif path=='/healthz': self.send(200,{'status':'ok'})

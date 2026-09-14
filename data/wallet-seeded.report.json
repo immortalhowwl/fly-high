@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "status": "blocked",
+  "execution": "not_run",
+  "seed_count": 0,
+  "blocked_reasons": [
+    "Indexer tape lacks evidenced pre-fill cash, known fees and executed quote_amount; usd is a valuation, not a quote asset amount. No canonical histories supplied."
+  ],
+  "research_as_of": "2026-09-14T20:06:30.134336Z",
+  "indexer_fill_count": 500,
+  "indexer_wallet_count": 147,
+  "copy_bar_count": 200,
+  "training_cutoff": 1789369200.0,
+  "copy_source": {
+    "file": "canonical.json",
+    "sha256": "7bf8c21dcaa21b40e3bf75f9dffbde96b94fb5feae6b3656d916a43e55704992",
+    "symbol": "COPY",
+    "token": "0xac79255f6f404eba14f316e8669d76573a2d7b1e",
+    "pool": "0x827534609c9f74fc7d950b91e268d22419611e8a1d7a557dec6716cba11ee605",
+    "chain": "robinhood",
+    "provider": "GeckoTerminal public API OHLCV; DexScreener token/pool verification and current liquidity only",
+    "source_url": "https://api.geckoterminal.com/api/v2/networks/robinhood/pools/0x827534609c9f74fc7d950b91e268d22419611e8a1d7a557dec6716cba11ee605/ohlcv/minute?aggregate=5&limit=250&currency=usd&token=0xac79255f6f404eba14f316e8669d76573a2d7b1e&include_empty_intervals=false",
+    "collected_at": "2026-09-14T15:54:49.230710+00:00"
+  },
+  "mappings": [],
+  "limits": [
+    "No receipt authentication or strategy recovery.",
+    "COPY prices are historical; liquidity, fees and execution are modeled.",
+    "Allocation proxy only; all other genes retain defaults.",
+    "No claim of wallet profit or out-of-sample predictive power."
+  ],
+  "research_warnings": [
+    "Third-party indexer attribution; wallet/handle identity and receipts are not independently verified by this ingestion.",
+    "Latest tape is capped at 500, not a complete 7d ledger; no pagination or backfill.",
+    "PnL and win_rate are upstream estimates, not recomputed; open inventory may extend outside 7d.",
+    "No inferred trading rules: unknown opening inventory, cash before fills, fees and decision context. No score or execution."
+  ],
+  "replay": null,
+  "inputs": {
+    "research": {
+      "path": "data/research.snapshot.json",
+      "sha256": "0025da62b939665a38ca465a88aac07318e1371e7739b43999755109e47415f8"
+    },
+    "copy_report": {
+      "path": "examples/copy.report.json",
+      "sha256": "e6c7744148f41b52ac4b02817810a266f393cecd184ad04c5698d849cb9c3013"
+    },
+    "canonical": {
+      "path": "examples/canonical.json",
+      "sha256": "7bf8c21dcaa21b40e3bf75f9dffbde96b94fb5feae6b3656d916a43e55704992"
+    }
+  }
+}

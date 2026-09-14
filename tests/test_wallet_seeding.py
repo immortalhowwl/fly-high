@@ -29,12 +29,16 @@ class ReplayTests(unittest.TestCase):
         snapshot = {'payload': {'fills': [], 'wallets': []}}
         report = {'bars': bars, 'mode': 'historical_prices_assumed_liquidity',
                   'execution': 'simulated', 'source': {'symbol': 'COPY'},
-                  'methodology': {'max_gap_seconds': 180}}
+                  'methodology': {'max_gap_seconds': 180, 'historical_liquidity': False,
+                                  'assumed_execution_liquidity_usd': 10000}}
+        # Preserve provenance, not the original evolution's run parameters.
         rows = [fill(str(i), int(bars[i]['timestamp']), cash_before=1000) for i in range(3)]
         result = wallet_replay.build_replay(snapshot, report, [rows])
         self.assertEqual(result['status'], 'completed')
         self.assertEqual(result['seed_count'], 1)
         self.assertEqual(result['replay']['mode'], report['mode'])
+        self.assertIs(result['replay']['methodology']['historical_liquidity'], False)
+        self.assertEqual(result['replay']['methodology']['assumed_execution_liquidity_usd'], 10000)
         self.assertEqual(result['replay']['holdout_evaluations'], 1)
         origin = result['replay']['events'][0]['seed_origin']['provenance']
         self.assertEqual(origin['mapped_genes']['allocation']['sample_count'], 3)

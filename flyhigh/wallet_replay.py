@@ -61,6 +61,10 @@ def build_replay(snapshot, copy_report, histories=None):
         replay = evolve(bars, seed_genomes=seeds,
                         max_gap=copy_report['methodology']['max_gap_seconds'])
         replay.update(mode=copy_report['mode'], source=copy_report['source'])
+        for key in ('historical_liquidity', 'assumed_execution_liquidity_usd',
+                    'timestamp_semantics', 'warnings'):
+            if key in copy_report['methodology']:
+                replay['methodology'][key] = copy_report['methodology'][key]
         result['replay'] = replay
     json.dumps(result, allow_nan=False)
     return result

@@ -1,6 +1,7 @@
 # Local runtime state and secrets
 /data/*
 !/data/research.snapshot.json
+!/data/wallet-seeded.report.json
 .env
 .env.*
 !.env.example
