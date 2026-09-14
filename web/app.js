@@ -2,7 +2,12 @@
 const $=id=>document.getElementById(id),world=$('world'),ctx=world.getContext('2d');
 let state=null,selected=null,flies=[],generation=0,bar=0,positions=[],visualTime=0,lastFrame=0,lastRender='';
 let playback=null;
-const walletMode=!!window.location && new URLSearchParams(window.location.search).get('replay')==='wallet';
+const replayMode=window.location ? new URLSearchParams(window.location.search).get('replay') : null;
+const hypothesisMode=replayMode==='hypothesis',walletMode=replayMode==='wallet',seededMode=walletMode||hypothesisMode;
+const replayEndpoint=hypothesisMode?'/api/hypothesis-replay':'/api/wallet-replay';
+const replayLabel=hypothesisMode?'RETROSPECTIVE WALLET-INSPIRED SIMULATION':'WALLET-SEEDED';
+function overlapText(e){const note=e?.overlap_note||e?.overlap||e?.temporal_overlap;return note?(typeof note==='string'?note:JSON.stringify(note)):'';}
+function retrospectiveLabels(){if(!hypothesisMode)return;for(const node of document.querySelectorAll('.holdout .panel-title'))node.textContent='RETROSPECTIVE FINAL SEGMENT / NOT FORWARD VALIDATION';for(const node of document.querySelectorAll('.holdout p'))node.textContent='Historical experiment; wallet evidence may overlap evaluation. Not an unseen holdout or a recovered wallet strategy.';for(const node of document.querySelectorAll('.market dt'))if(/holdout/i.test(node.textContent))node.textContent='Replay segments';}
 let walletEnvelope=null;
 function lineageText(f,r){
  const provenance=f.seed_origin?.provenance;
@@ -10,29 +15,29 @@ function lineageText(f,r){
  const seen=new Set(),origins=new Set();
  function visit(id){if(seen.has(id))return;seen.add(id);const node=births.get(id);if(node?.seed_origin?.provenance?.wallet)origins.add(node.seed_origin.provenance.wallet);for(const p of node?.parents||[])visit(p);}
  for(const p of f.parents||[])visit(p);
- const origin=provenance?'WALLET-SEEDED FOUNDER · partial mapping, not recovered strategy\n'+JSON.stringify(provenance,null,2):origins.size?'DERIVED DESCENDANT · '+[...origins].join(', ')+' · simulated inheritance, not observed wallet behaviour':(f.parents?.length?'PARENT '+f.parents.join(', '):'FOUNDER / RANDOM IMMIGRANT');
+ const origin=provenance?(hypothesisMode?'WALLET-INSPIRED HYPOTHESIS FOUNDER · not recovered strategy\n':'WALLET-SEEDED FOUNDER · partial mapping, not recovered strategy\n')+JSON.stringify(f.seed_origin,null,2):origins.size?'DERIVED DESCENDANT · '+[...origins].join(', ')+' · simulated inheritance, not observed wallet behaviour':(f.parents?.length?'PARENT '+f.parents.join(', '):'FOUNDER / RANDOM IMMIGRANT');
  return origin+(f.mutations?.length?'\n'+f.mutations.map(m=>m.gene+': '+number(m.before,5)+' → '+number(m.after,5)).join('\n'):' · no inherited mutations');
 }
 function walletStatus(message,blocked=false){
  text('replay-status',message);$('archive-link').hidden=false;$('archive-link').href='/';
- for(const id of ['export-run','export-ledger']){$(id).href='/api/wallet-replay';$(id).textContent=id==='export-run'?'EXPORT SEEDED ENVELOPE ↗':'SEEDED ENVELOPE / EVENTS ↗';}
+ for(const id of ['export-run','export-ledger']){$(id).href=replayEndpoint;$(id).textContent=id==='export-run'?'EXPORT '+(hypothesisMode?'HYPOTHESIS':'SEEDED')+' ENVELOPE ↗':(hypothesisMode?'HYPOTHESIS':'SEEDED')+' ENVELOPE / EVENTS ↗';}
  for(const button of document.querySelectorAll('[data-action]'))button.disabled=blocked;
 }
 async function pollWallet(){
- walletStatus('Loading precomputed wallet replay…',true);text('big-count','0');
+ retrospectiveLabels();walletStatus('Loading precomputed '+replayLabel+'…',true);text('big-count','0');
  try{
-  walletEnvelope=await request('/api/wallet-replay');
+  walletEnvelope=await request(replayEndpoint);
   const e=walletEnvelope,r=e.replay;
-  if(e.status!=='completed'||!Number.isInteger(e.seed_count)||e.seed_count<1||!r?.generations?.length||!r.split){
+  if(e.status!=='completed'||(hypothesisMode&&e.evaluation_kind!=='retrospective')||!Number.isInteger(e.seed_count)||e.seed_count<1||!r?.generations?.length||!r.split){
    const reason=(e.blocked_reasons||[]).join('\n')||'No admitted wallet seeds in a completed replay.';
-   text('mode',e.status==='blocked'?'WALLET-SEEDED / BLOCKED':'WALLET-SEEDED / UNAVAILABLE');text('connection','NO SEEDED REPLAY');text('source-badge','NO SEEDED REPLAY');text('source-status','NOT RUN · no archive substituted');text('phase','NO SIMULATION RUN');text('error',reason);walletStatus(reason,true);return;
+   state=null;playback=null;flies=[];text('mode',replayLabel+(e.status==='blocked'?' / BLOCKED':' / UNAVAILABLE'));text('connection','NO SEEDED REPLAY');text('source-badge','NO SEEDED REPLAY');text('source-status','NOT RUN · no archive substituted');text('phase','NO SIMULATION RUN');text('error',reason);walletStatus(reason,true);return;
   }
   state={public:true,running:false,cursor:0,report:r,collector:{rows:[],fresh:false,status:'disabled_wallet_replay'}};
   const wanted=new URLSearchParams(window.location.search).get('wallet');
   selected=r.generations[0].flies.find(f=>f.seed_origin?.provenance?.wallet===wanted)?.id||null;
-  playback=new Playback(r);update();text('connection','● WALLET-SEEDED · LOCAL PLAYBACK');text('error','');
-  walletStatus((wanted&&!r.generations[0].flies.some(f=>f.seed_origin?.provenance?.wallet===wanted)?'Requested wallet is not admitted; showing the separate admitted population. ':'')+e.seed_count+' admitted founder(s). Simulation, not wallet execution. '+(e.limits||[]).join(' '));
- }catch(e){state=null;playback=null;flies=[];text('mode','WALLET-SEEDED / UNAVAILABLE');text('connection','NO SEEDED REPLAY');text('source-badge','NO SEEDED REPLAY');text('source-status','UNAVAILABLE · no archive substituted');text('phase','NO SIMULATION RUN');text('error',e.message);walletStatus('Precomputed wallet replay unavailable. '+e.message,true);}
+  playback=new Playback(r);update();text('connection','● '+replayLabel+' · LOCAL PLAYBACK');text('error','');
+  walletStatus((wanted&&!r.generations[0].flies.some(f=>f.seed_origin?.provenance?.wallet===wanted)?'Requested wallet is not admitted; showing the separate admitted population. ':'')+e.seed_count+' admitted founder(s). Simulation, not wallet execution or recovered strategy. '+overlapText(e)+' '+(e.limits||[]).join(' '));
+ }catch(e){state=null;playback=null;flies=[];text('mode',replayLabel+' / UNAVAILABLE');text('connection','NO SEEDED REPLAY');text('source-badge','NO SEEDED REPLAY');text('source-status','UNAVAILABLE · no archive substituted');text('phase','NO SIMULATION RUN');text('error',e.message);walletStatus('Precomputed wallet replay unavailable. '+e.message,true);}
 }
 const number=(n,d=2)=>Number(n).toLocaleString('en-US',{maximumFractionDigits:d,minimumFractionDigits:d});
 const text=(id,value)=>$(id).textContent=value;
@@ -44,13 +49,13 @@ for(const button of document.querySelectorAll('[data-action]'))button.onclick=as
 function update(){
  const r=state.report;generation=Math.floor(state.cursor/r.split);bar=state.cursor%r.split;const gen=r.generations[generation];flies=gen.flies;
  if(!flies.some(f=>f.id===selected))selected=flies[0].id;
- const modeLabel=walletMode?'WALLET-SEEDED':r.mode==='historical_prices_assumed_liquidity'?'MARKET REPLAY':r.mode.toUpperCase();
+ const modeLabel=seededMode?replayLabel:r.mode==='historical_prices_assumed_liquidity'?'MARKET REPLAY':r.mode.toUpperCase();
  text('mode',modeLabel);text('phase',state.running?'ARCHIVED TRAINING REPLAY RUNNING':'ARCHIVED REPLAY PAUSED');text('generation','GEN '+String(generation).padStart(2,'0'));
  text('bar','OBSERVATION '+(bar+1)+' / '+r.split);text('big-count',flies.length);text('diversity',gen.diversity+' UNIQUE GENOMES');
  const sourceLabel=typeof r.source==='object'?r.source.symbol+' · '+r.source.provider+' · execution liquidity assumed':(r.source||'seeded offline fixture');
  text('source-badge',modeLabel+' · '+sourceLabel);
  const c=state.collector;
- text('source-status',walletMode?'WALLET-SEEDED · SIMULATED · HISTORICAL PRICES · ASSUMED LIQUIDITY · NOT LIVE':state.public?'HISTORICAL ARCHIVE · NOT LIVE · NO CONTINUOUS EVOLUTION':(c.fresh?'LIVE SNAPSHOTS':'SNAPSHOTS / '+c.status.toUpperCase())+' · '+c.verified_pairs+' PAIRS'+(c.observed_at?' · '+new Date(c.observed_at*1000).toISOString():''));
+ text('source-status',seededMode?replayLabel+' · SIMULATED · HISTORICAL PRICES · ASSUMED LIQUIDITY · NOT LIVE':state.public?'HISTORICAL ARCHIVE · NOT LIVE · NO CONTINUOUS EVOLUTION':(c.fresh?'LIVE SNAPSHOTS':'SNAPSHOTS / '+c.status.toUpperCase())+' · '+c.verified_pairs+' PAIRS'+(c.observed_at?' · '+new Date(c.observed_at*1000).toISOString():''));
  $('tokens').replaceChildren();
  const observed=r.bars[bar];
  const input=element('div','','token');
@@ -77,6 +82,17 @@ function inspect(){
  text('equity','$'+number(d.equity));let peak=1000,dd=0;for(const p of curve){peak=Math.max(peak,p.equity);dd=Math.max(dd,(peak-p.equity)/peak);}text('drawdown',number(dd*100)+'%');
  $('genome').replaceChildren();for(const [k,v] of Object.entries(f.genome))$('genome').append(element('dt',k.replaceAll('_',' ').toUpperCase()),element('dd',Number.isInteger(v)?v:number(v,4)));
  text('lineage',lineageText(f,state.report));
+ for(const parent of f.parents||[]){
+  const target=state.report.generations.findIndex(g=>g.flies.some(x=>x.id===parent));
+  if(target>=0){const button=element('button','INSPECT PARENT '+parent);button.onclick=()=>{playback?.control('pause');if(playback)playback.cursor=target*state.report.split;state.cursor=target*state.report.split;state.running=false;selected=parent;update();};$('lineage').append(button);}
+ }
+ if(hypothesisMode){
+  const details=element('details'),summary=element('summary','SIMULATED TRADES / RESULTS');
+  const visibleTrades=(f.result.trades||[]).filter(t=>t.timestamp<=d.timestamp);
+  details.append(summary,element('pre',JSON.stringify({as_of:d.timestamp,equity:d.equity,trades:visibleTrades,cancelled_orders:f.result.decisions.slice(0,bar+1).filter(x=>x.action==='cancel'),...(bar===state.report.split-1?{final_return:f.result.return,drawdown:f.result.drawdown,fees:f.result.fees,fitness:f.result.fitness,mark_note:f.result.mark_note}: {})},null,2)));
+  if(!visibleTrades.length)details.append(element('p','No simulated fills through this observation. No wallet trades are implied.'));
+  $('lineage').append(details);
+ }
  text('decision',d.action.toUpperCase()+' · '+d.reason+(d.pending?' → '+d.pending.toUpperCase()+' QUEUED FOR NEXT OBSERVATION':''));
  const c=$('curve'),x=c.getContext('2d');c.width=c.clientWidth*2;c.height=116;x.clearRect(0,0,c.width,c.height);const low=Math.min(995,...curve.map(p=>p.equity)),high=Math.max(1005,...curve.map(p=>p.equity));x.beginPath();curve.forEach((p,i)=>{const px=i/Math.max(1,state.report.split-1)*c.width,py=105-(p.equity-low)/(high-low)*94;i?x.lineTo(px,py):x.moveTo(px,py);});x.strokeStyle='#c2ff5a';x.lineWidth=2;x.stroke();
 }
@@ -104,4 +120,4 @@ function draw(ts){
 }
 world.onclick=e=>{const rect=world.getBoundingClientRect(),x=e.clientX-rect.left,y=e.clientY-rect.top;const hit=positions.map(p=>({p,d:Math.hypot(p.x-x,p.y-y)})).sort((a,b)=>a.d-b.d)[0];if(hit&&hit.d<35){selected=hit.p.fly.id;update();}};
 window.flyHighProbe=()=>({flies:flies.length,selected,generation,bar,positions:positions.map(p=>({id:p.fly.id,x:p.x,y:p.y,phase:p.phase})),running:state?.running});
-requestAnimationFrame(draw);if(walletMode)pollWallet();else poll();
+requestAnimationFrame(draw);if(seededMode)pollWallet();else poll();

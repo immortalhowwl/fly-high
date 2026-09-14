@@ -98,6 +98,36 @@ def make_server(port=8765, report=None, directory=None, public=False):
                     self.send(503,{'status':'unavailable','seed_count':0,'replay':None,
                                    'blocked_reasons':['Precomputed wallet replay is missing or invalid.']})
                 else: self.send(200,envelope)
+            elif path=='/api/hypothesis-replay':
+                # Persisted retrospective experiment only: no network, seed export or evolution.
+                try:
+                    envelope=json.loads((lab.directory/'hypothesis-replay.report.json').read_text())
+                    if isinstance(envelope,dict) and envelope.get('experiment_kind') == 'retrospective_wallet_inspired_hypothesis':
+                        envelope.setdefault('evaluation_kind','retrospective')
+                        envelope.setdefault('overlap_note',' '.join(note for note in envelope.get('limits',[]) if isinstance(note,str) and 'overlap' in note.lower()))
+                    if not isinstance(envelope,dict) or envelope.get('status') not in ('blocked','completed'):
+                        raise ValueError('invalid envelope')
+                    count=envelope.get('seed_count')
+                    replay=envelope.get('replay')
+                    if type(count) is not int or count < 0:
+                        raise ValueError('invalid seed count')
+                    if envelope['status']=='completed':
+                        if envelope.get('evaluation_kind') != 'retrospective' or count < 1 or not isinstance(replay,dict):
+                            raise ValueError('invalid retrospective replay')
+                        generations=replay.get('generations')
+                        if not isinstance(generations,list) or not generations or type(replay.get('split')) is not int or replay['split'] < 1:
+                            raise ValueError('empty replay')
+                        founders=generations[0].get('flies',[])
+                        admitted=[f for f in founders if isinstance(f,dict) and isinstance(f.get('seed_origin'),dict) and f['seed_origin'].get('provenance',{}).get('wallet')]
+                        if len(admitted) != count:
+                            raise ValueError('founder count mismatch')
+                    elif count != 0 or replay is not None:
+                        raise ValueError('invalid blocked replay')
+                    json.dumps(envelope,allow_nan=False)
+                except (OSError,ValueError,TypeError,AttributeError,KeyError):
+                    self.send(503,{'status':'unavailable','evaluation_kind':'retrospective','seed_count':0,'replay':None,
+                                   'blocked_reasons':['Precomputed hypothesis replay is missing or invalid.']})
+                else: self.send(200,envelope)
             elif path=='/api/behavior':
                 # Pure derivation from the persisted envelope, including raw attribution.
                 # Never acquire prices, export seeds, or evaluate a replay on this route.

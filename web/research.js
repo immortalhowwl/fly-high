@@ -72,11 +72,15 @@
     const founders = envelope.replay?.generations?.[0]?.flies || [];
     return founders.some(f => f.seed_origin?.provenance?.wallet === wallet) ? '/?replay=wallet&wallet=' + encodeURIComponent(wallet) : null;
   }
-  const api = {candleSegments, priceUSD, walletReplayLink, money, epoch, date, freshness, parseHash, route, normalize, rowsFor, matchingFills, supportedRules, safeURL, candlesOf};
+  function hypothesisReplayLink(envelope,wallet){
+    if(envelope?.evaluation_kind !== 'retrospective')return null;
+    return walletReplayLink(envelope,wallet)?.replace('replay=wallet','replay=hypothesis') || null;
+  }
+  const api = {candleSegments, priceUSD, walletReplayLink, hypothesisReplayLink, money, epoch, date, freshness, parseHash, route, normalize, rowsFor, matchingFills, supportedRules, safeURL, candlesOf};
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (!root.document) return;
   const doc = root.document, $ = id => doc.getElementById(id);
-  let replayEnvelope = null;
+  let replayEnvelope = null, hypothesisEnvelope = null, replayRequest = 0;
   let behaviorReport = null, behaviorState = "idle", behaviorRequest = 0;
   let data = null, state = parseHash(root.location.hash), page = 0, loading = false;
   function el(tag, value, cls) { const node = doc.createElement(tag); if (value != null) node.textContent = String(value); if (cls) node.className = cls; return node; }
@@ -248,6 +252,7 @@
       rules.forEach(rule => { box.append(el('p', rule.description), el('span', 'Supporting fill IDs: ' + rule.fill_ids.join(', '), 'secondary')); });
     }
     const replayLink = state.kind === 'wallet' ? walletReplayLink(replayEnvelope, state.id) : null;
+    const hypothesisLink = state.kind === 'wallet' ? hypothesisReplayLink(hypothesisEnvelope,state.id) : null;
     if (state.kind === 'wallet') {
       box.append(el('h3', 'Wallet → fly evidence / canonical admission'));
       behaviorEvidence(box);
@@ -261,6 +266,10 @@
     }
     box.append(el('h3', 'Continue to Colony'));
     if (replayLink) box.append(link('Open admitted wallet replay ↗', replayLink, 'colony'));
+    if(hypothesisLink){
+      const founder=hypothesisEnvelope.replay.generations[0].flies.find(f=>f.seed_origin?.provenance?.wallet===state.id);
+      box.append(el('p','RETROSPECTIVE WALLET-INSPIRED SIMULATION · evaluated hypothesis, not forward validation or recovered strategy.'),el('p',text(hypothesisEnvelope.overlap_note||hypothesisEnvelope.overlap||hypothesisEnvelope.temporal_overlap||'')),el('pre',text(founder.seed_origin)),link('Open wallet-inspired fly → lineage / trades ↗',hypothesisLink,'colony'));
+    }
     box.append(el('p', 'Original archive is separate and does not represent this wallet.'), link('Open original unseeded archive ↗', '/', 'colony'));
   }
   function render() {
@@ -274,12 +283,18 @@
     const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 20000);
     // Independent optional request: failure must never prevent research rendering.
     const replayController = new AbortController(), replayTimer = setTimeout(() => replayController.abort(), 15000);
-    replayEnvelope = null;
+    replayEnvelope = null; hypothesisEnvelope = null; const requestId=++replayRequest;
+    const hypothesisController=new AbortController(), hypothesisTimer=setTimeout(()=>hypothesisController.abort(),15000);
+    root.fetch('/api/hypothesis-replay',{cache:'no-store',signal:hypothesisController.signal})
+      .then(response=>response.ok?response.json():null)
+      .then(envelope=>{if(requestId!==replayRequest)return;hypothesisEnvelope=envelope;if(data)render();})
+      .catch(()=>{if(requestId!==replayRequest)return;hypothesisEnvelope=null;if(data)render();})
+      .finally(()=>clearTimeout(hypothesisTimer));
     behaviorRequest++; behaviorReport = null; behaviorState = 'idle';
     root.fetch('/api/wallet-replay', {cache: 'no-store', signal: replayController.signal})
       .then(response => response.ok ? response.json() : null)
-      .then(envelope => { replayEnvelope = envelope; if (data) render(); })
-      .catch(() => { replayEnvelope = null; if (data) render(); })
+      .then(envelope => { if(requestId!==replayRequest)return; replayEnvelope = envelope; if (data) render(); })
+      .catch(() => { if(requestId!==replayRequest)return; replayEnvelope = null; if (data) render(); })
       .finally(() => clearTimeout(replayTimer));
     try {
       const response = await root.fetch('/api/research', {headers: {Accept: 'application/json'}, cache: 'no-store', signal: controller.signal});

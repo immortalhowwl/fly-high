@@ -15,7 +15,7 @@ test('optional replay fetch failure leaves research usable and cannot render hos
  const document={getElementById:id=>nodes[id]??=new Node(),createElement:()=>new Node(),querySelectorAll:()=>[],addEventListener(){}};
  const window={document,location:{hash:'#view=wallets&wallet=a'},addEventListener(){},fetch:async path=>{calls.push(path);if(path==='/api/wallet-replay')throw Error('offline');return {ok:true,json:async()=>({wallets:[{address:'a',handle:'<img onerror=alert(1)>'}],fills:[],tokens:[]})};}};
  vm.runInNewContext(fs.readFileSync('web/research.js','utf8'),{window,URL,URLSearchParams,AbortController,setTimeout,clearTimeout,setInterval(){}});
- await settle();assert.deepEqual(calls,['/api/wallet-replay','/api/research','/api/behavior']);assert.equal(nodes['wallet-count'].textContent,'1');assert.match(nodes.status.textContent,/Snapshot loaded/);
+ await settle();assert.deepEqual(calls,['/api/hypothesis-replay','/api/wallet-replay','/api/research','/api/behavior']);assert.equal(nodes['wallet-count'].textContent,'1');assert.match(nodes.status.textContent,/Snapshot loaded/);
  assert.ok(nodes.dossier.children.some(n=>n.textContent==='<img onerror=alert(1)>'));
 });
 test('research only links wallets with actual seeded founders, not mapping indices',()=>{

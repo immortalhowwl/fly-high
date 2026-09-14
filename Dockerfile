@@ -7,6 +7,7 @@ COPY examples/copy.report.json ./examples/copy.report.json
 COPY --chown=65534:65534 data/research.snapshot.json ./data/research.snapshot.json
 COPY --chown=65534:65534 data/wallet-seeded.report.json ./data/wallet-seeded.report.json
 COPY --chown=65534:65534 data/market-history/copy.latest.json ./data/market-history/copy.latest.json
+COPY --chown=65534:65534 data/hypothesis-replay.report.json ./data/hypothesis-replay.report.json
 RUN chown -R 65534:65534 /app/data
 USER 65534:65534
 EXPOSE 8080
