@@ -2,6 +2,9 @@
 /data/*
 !/data/research.snapshot.json
 !/data/wallet-seeded.report.json
+!/data/market-history/
+/data/market-history/*
+!/data/market-history/copy.latest.json
 .env
 .env.*
 !.env.example

@@ -47,6 +47,47 @@ class Lab:
             return self.state()
 
 
+def research_with_chart(snapshot, directory=None):
+    """Read canonical saved prices only. No provider calls on the HTTP path."""
+    from . import market_history
+    try:
+        history = market_history.load(directory or market_history.DEFAULT_DIR, verify_raw=False)
+    except (OSError, ValueError, KeyError, TypeError):
+        return snapshot
+    bars = history['bars']
+    if not bars:
+        return snapshot
+    tokens = snapshot['tokens']
+    matching = [t for t in tokens if str(t.get('token', t.get('address', ''))).lower() == history['token']
+                and t.get('chain', history['chain']) == history['chain']]
+    if not matching:
+        # A source-verified market-only row, not invented wallet activity/metrics.
+        token = {k: history[k] for k in ('token', 'symbol', 'chain', 'pool')}
+        token['coverage'] = 'Market history only; no wallet summary supplied'
+        tokens.append(token)
+        matching = [token]
+    gaps = sum(b['timestamp'] - a['timestamp'] > 300 for a, b in zip(bars, bars[1:]))
+    for token in matching:
+        token['candles'] = [dict(ts=b['timestamp'], close=b['close']) for b in bars]
+        token['chart_source'] = dict(provider=history['provider'], url=history['source_url'],
+            chain=history['chain'], token=history['token'], pool=history['pool'],
+            as_of=history['as_of'], collected_at=history['collected_at'],
+            last_close=bars[-1]['timestamp'], stale=time.time()-history['as_of'] >= 900,
+            interval_seconds=300, gaps_over_300_seconds=gaps, has_gaps=bool(gaps),
+            interpolated=False, price_currency='USD', timestamp_semantics='closed',
+            raw_receipts_packaged=False,
+            warning='Observed market prices, not wallet executions or seeded replay.')
+    return snapshot
+
+
+def refresh_market(stop):
+    from .market_history import refresh
+    while not stop.is_set():
+        try: refresh(window_count=250)
+        except Exception as exc: print(f'Market refresh unavailable; prior snapshot retained: {type(exc).__name__}', flush=True)
+        stop.wait(900)
+
+
 def make_server(port=8765, report=None, directory=None, public=False):
     if public and report is None:
         report=json.loads((ROOT/'examples/copy.report.json').read_text())
@@ -104,7 +145,7 @@ def make_server(port=8765, report=None, directory=None, public=False):
             elif path=='/api/research':
                 try:
                     from .research import load_snapshot
-                    snapshot=load_snapshot()
+                    snapshot=research_with_chart(load_snapshot())
                     self.send(200,snapshot)
                 except (OSError,ValueError):
                     self.send(503,{'error':'Research snapshot is not available yet'})
@@ -182,6 +223,7 @@ def main():
                     except Exception as exc: print(f'Research refresh unavailable: {type(exc).__name__}',flush=True)
                     refresh_stop.wait(900)
             threading.Thread(target=refresh_research,daemon=True).start()
+            threading.Thread(target=refresh_market,args=(refresh_stop,),daemon=True).start()
         print(f'FLY HIGH {"public historical replay" if args.public else "local lab"} port {server.server_port}',flush=True)
         try: server.serve_forever()
         except KeyboardInterrupt: pass

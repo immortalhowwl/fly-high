@@ -58,12 +58,21 @@
   function candlesOf(token) {
     return (Array.isArray(token.candles) ? token.candles : []).map(c => ({ts: epoch(Array.isArray(c) ? c[0] : c.ts), close: number(Array.isArray(c) ? c[4] : c.close)})).filter(c => Number.isFinite(c.ts) && c.close !== null && c.close >= 0).sort((a,b) => a.ts - b.ts);
   }
+  function candleSegments(candles) {
+    const segments = [];
+    candles.forEach((c, i) => {
+      if (!i || c.ts - candles[i - 1].ts > 300000) segments.push([]);
+      segments[segments.length - 1].push(c);
+    });
+    return segments;
+  }
+  function priceUSD(value) { return '$' + value.toPrecision(5); }
   function walletReplayLink(envelope, wallet) {
     if (!wallet || envelope?.status !== 'completed' || !Number.isInteger(envelope.seed_count) || envelope.seed_count < 1) return null;
     const founders = envelope.replay?.generations?.[0]?.flies || [];
     return founders.some(f => f.seed_origin?.provenance?.wallet === wallet) ? '/?replay=wallet&wallet=' + encodeURIComponent(wallet) : null;
   }
-  const api = {walletReplayLink, money, epoch, date, freshness, parseHash, route, normalize, rowsFor, matchingFills, supportedRules, safeURL, candlesOf};
+  const api = {candleSegments, priceUSD, walletReplayLink, money, epoch, date, freshness, parseHash, route, normalize, rowsFor, matchingFills, supportedRules, safeURL, candlesOf};
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (!root.document) return;
   const doc = root.document, $ = id => doc.getElementById(id);
@@ -141,8 +150,30 @@
     const min = Math.min(...candles.map(c => c.close)), max = Math.max(...candles.map(c => c.close));
     const start = candles[0].ts, duration = candles[candles.length - 1].ts - start;
     if (!duration) { box.append(el('p', 'Insufficient distinct candle timestamps for a chart.')); return; }
-    const svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('viewBox', '0 0 320 140'); svg.setAttribute('class', 'chart'); svg.setAttribute('role', 'img'); svg.setAttribute('aria-label', 'Supplied candle closing prices: ' + candles.length + ' observations. Range ' + min + ' to ' + max);
-    const line = doc.createElementNS('http://www.w3.org/2000/svg', 'polyline'); line.setAttribute('points', candles.map(c => (8 + (c.ts - start) / duration * 304).toFixed(2) + ',' + (max === min ? 70 : 128 - (c.close - min) / (max - min) * 116).toFixed(2)).join(' ')); line.setAttribute('fill', 'none'); line.setAttribute('stroke', 'currentColor'); line.setAttribute('stroke-width', '2'); svg.append(line); box.append(svg, el('p', candles.length + ' supplied candle closes · ' + text(token.chart_source || token.source || data.source)), el('p', date(start) + ' → ' + date(candles[candles.length - 1].ts) + '\nPrice range: ' + min + ' – ' + max));
+    const svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 420 180'); svg.setAttribute('class', 'chart'); svg.setAttribute('role', 'img');
+    svg.setAttribute('aria-label', 'USD closed candle prices; gaps over five minutes are not connected');
+    const point = c => [90 + (c.ts - start) / duration * 318, max === min ? 80 : 140 - (c.close - min) / (max - min) * 122];
+    candleSegments(candles).forEach(segment => {
+      const line = doc.createElementNS(svg.namespaceURI, 'polyline');
+      line.setAttribute('points', segment.map(c => point(c).join(',')).join(' '));
+      line.setAttribute('fill', 'none'); line.setAttribute('stroke', 'currentColor'); line.setAttribute('stroke-width', '2'); svg.append(line);
+      if (segment.length === 1) {
+        const dot = doc.createElementNS(svg.namespaceURI, 'circle'), xy = point(segment[0]);
+        dot.setAttribute('cx', xy[0]); dot.setAttribute('cy', xy[1]); dot.setAttribute('r', '2'); dot.setAttribute('fill', 'currentColor'); svg.append(dot);
+      }
+    });
+    [[max, 20], [(min + max) / 2, 80], [min, 140]].forEach(([value, y]) => {
+      const label = doc.createElementNS(svg.namespaceURI, 'text');
+      label.setAttribute('x', '2'); label.setAttribute('y', y); label.setAttribute('fill', 'currentColor'); label.setAttribute('font-size', '11'); label.textContent = priceUSD(value); svg.append(label);
+    });
+    box.append(svg, el('p', date(start) + ' → ' + date(candles[candles.length - 1].ts)), el('p', 'USD close range: ' + priceUSD(min) + ' – ' + priceUSD(max)));
+    const source = token.chart_source || {};
+    box.append(el('p', candles.length + ' actual 5-minute closes · ' + text(source.provider || source) + ' · ' + (source.stale ? 'STALE' : 'Saved snapshot')),
+      el('p', 'As of ' + date(source.as_of) + ' · Collected ' + date(source.collected_at)),
+      el('p', 'Gaps >300s: ' + (source.gaps_over_300_seconds ?? 'unknown') + ' · Not connected or interpolated. ' + text(source.warning)));
+    const url = safeURL(source.url);
+    if (url) { const a = link('GeckoTerminal OHLCV source ↗', url); a.target = '_blank'; a.rel = 'noopener noreferrer'; box.append(a); }
   }
   function dossier() {
     const box = $('dossier'); box.replaceChildren(); box.hidden = !state.kind || state.tab === 'method'; if (box.hidden) return;
