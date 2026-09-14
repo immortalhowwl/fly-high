@@ -94,7 +94,7 @@ function inspect(){
   $('lineage').append(details);
  }
  text('decision',d.action.toUpperCase()+' · '+d.reason+(d.pending?' → '+d.pending.toUpperCase()+' QUEUED FOR NEXT OBSERVATION':''));
- const c=$('curve'),x=c.getContext('2d');c.width=c.clientWidth*2;c.height=116;x.clearRect(0,0,c.width,c.height);const low=Math.min(995,...curve.map(p=>p.equity)),high=Math.max(1005,...curve.map(p=>p.equity));x.beginPath();curve.forEach((p,i)=>{const px=i/Math.max(1,state.report.split-1)*c.width,py=105-(p.equity-low)/(high-low)*94;i?x.lineTo(px,py):x.moveTo(px,py);});x.strokeStyle='#c2ff5a';x.lineWidth=2;x.stroke();
+ const c=$('curve'),x=c.getContext('2d');c.width=c.clientWidth*2;c.height=116;x.clearRect(0,0,c.width,c.height);const low=Math.min(995,...curve.map(p=>p.equity)),high=Math.max(1005,...curve.map(p=>p.equity));x.beginPath();curve.forEach((p,i)=>{const px=i/Math.max(1,state.report.split-1)*c.width,py=105-(p.equity-low)/(high-low)*94;i?x.lineTo(px,py):x.moveTo(px,py);});x.strokeStyle='#00ff85';x.lineWidth=2;x.stroke();
 }
 function draw(ts){
  const elapsed=Math.min(.05,(ts-lastFrame)/1000||0);lastFrame=ts;if(state?.running)visualTime+=elapsed;
@@ -102,19 +102,19 @@ function draw(ts){
  const rect=world.getBoundingClientRect(),w=rect.width,h=rect.height,dpr=window.devicePixelRatio||1;
  if(world.width!==Math.round(w*dpr)||world.height!==Math.round(h*dpr)){world.width=Math.round(w*dpr);world.height=Math.round(h*dpr);}
  ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);
- ctx.strokeStyle='#202d2155';ctx.lineWidth=1;for(let x=20;x<w;x+=35){for(let y=20;y<h;y+=35){ctx.beginPath();ctx.moveTo(x-2,y);ctx.lineTo(x+2,y);ctx.moveTo(x,y-2);ctx.lineTo(x,y+2);ctx.stroke();}}
+ ctx.strokeStyle='#60606033';ctx.lineWidth=1;for(let x=20;x<w;x+=35){for(let y=20;y<h;y+=35){ctx.beginPath();ctx.moveTo(x-2,y);ctx.lineTo(x+2,y);ctx.moveTo(x,y-2);ctx.lineTo(x,y+2);ctx.stroke();}}
  // Habitat rings are spatial guides, not market data.
- ctx.strokeStyle='#44583733';for(const radius of [.21,.36]){ctx.beginPath();ctx.ellipse(w/2,h/2,w*radius,h*radius,0,0,Math.PI*2);ctx.stroke();}
+ ctx.strokeStyle='#60606033';for(const radius of [.21,.36]){ctx.beginPath();ctx.ellipse(w/2,h/2,w*radius,h*radius,0,0,Math.PI*2);ctx.stroke();}
  positions=flies.map(f=>({...Flight.position(f.id,visualTime,w,h),fly:f}));
- for(const p of positions){for(const parent of p.fly.parents){const q=positions.find(v=>v.fly.id===parent);if(q){ctx.strokeStyle='#c2ff5a22';ctx.setLineDash([3,6]);ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(q.x,q.y);ctx.stroke();ctx.setLineDash([]);}}}
+ for(const p of positions){for(const parent of p.fly.parents){const q=positions.find(v=>v.fly.id===parent);if(q){ctx.strokeStyle='#00ff8522';ctx.setLineDash([3,6]);ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(q.x,q.y);ctx.stroke();ctx.setLineDash([]);}}}
  for(const p of positions){
-  const f=p.fly,holding=f.result.curve[bar]?.holding,active=f.id===selected,color=holding?'#ff8953':'#c2ff5a';
+  const f=p.fly,holding=f.result.curve[bar]?.holding,active=f.id===selected,color=holding?'#ff8a00':'#00ff85';
   const next=Flight.position(f.id,visualTime+.01,w,h),angle=Math.atan2(next.y-p.y,next.x-p.x)+Math.PI/2;
   if(active){ctx.beginPath();ctx.arc(p.x,p.y,23,0,Math.PI*2);ctx.strokeStyle=color;ctx.lineWidth=1;ctx.stroke();ctx.fillStyle=color;ctx.font='10px monospace';ctx.textAlign='center';ctx.fillText(f.id,p.x,p.y+37);}
   ctx.save();ctx.translate(p.x,p.y);ctx.rotate(angle);const wing=.7+.3*Math.sin(visualTime*55+p.phase);
-  ctx.strokeStyle='#748370';ctx.lineWidth=1;for(const side of [-1,1]){for(let k=0;k<3;k++){ctx.beginPath();ctx.moveTo(side*3,k*3-3);ctx.lineTo(side*(9+k),k*4-7);ctx.stroke();}}
-  ctx.fillStyle='#d8edc966';for(const side of [-1,1]){ctx.save();ctx.rotate(side*.5*wing);ctx.beginPath();ctx.ellipse(side*7,-2,5,10,side*.4,0,Math.PI*2);ctx.fill();ctx.restore();}
-  ctx.fillStyle='#34412c';ctx.strokeStyle=color;ctx.beginPath();ctx.ellipse(0,4,4,8,0,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.fillStyle=color;ctx.beginPath();ctx.arc(0,-6,4,0,Math.PI*2);ctx.fill();ctx.fillStyle='#0b100d';for(const side of [-1,1]){ctx.beginPath();ctx.arc(side*2,-7,1.3,0,Math.PI*2);ctx.fill();}ctx.restore();
+  ctx.strokeStyle='#949494';ctx.lineWidth=1;for(const side of [-1,1]){for(let k=0;k<3;k++){ctx.beginPath();ctx.moveTo(side*3,k*3-3);ctx.lineTo(side*(9+k),k*4-7);ctx.stroke();}}
+  ctx.fillStyle='#ffffff66';for(const side of [-1,1]){ctx.save();ctx.rotate(side*.5*wing);ctx.beginPath();ctx.ellipse(side*7,-2,5,10,side*.4,0,Math.PI*2);ctx.fill();ctx.restore();}
+  ctx.fillStyle='#101010';ctx.strokeStyle=color;ctx.beginPath();ctx.ellipse(0,4,4,8,0,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.fillStyle=color;ctx.beginPath();ctx.arc(0,-6,4,0,Math.PI*2);ctx.fill();ctx.fillStyle='#000000';for(const side of [-1,1]){ctx.beginPath();ctx.arc(side*2,-7,1.3,0,Math.PI*2);ctx.fill();}ctx.restore();
  }
  requestAnimationFrame(draw);
 }
