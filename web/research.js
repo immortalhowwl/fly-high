@@ -77,6 +77,7 @@
   if (!root.document) return;
   const doc = root.document, $ = id => doc.getElementById(id);
   let replayEnvelope = null;
+  let behaviorReport = null, behaviorState = "idle", behaviorRequest = 0;
   let data = null, state = parseHash(root.location.hash), page = 0, loading = false;
   function el(tag, value, cls) { const node = doc.createElement(tag); if (value != null) node.textContent = String(value); if (cls) node.className = cls; return node; }
   function link(value, href, cls) { const a = el('a', value, cls); a.href = href; return a; }
@@ -175,6 +176,53 @@
     const url = safeURL(source.url);
     if (url) { const a = link('GeckoTerminal OHLCV source ↗', url); a.target = '_blank'; a.rel = 'noopener noreferrer'; box.append(a); }
   }
+  function loadBehavior() {
+    if (behaviorState !== 'idle') return;
+    behaviorState = 'loading';
+    const request = ++behaviorRequest;
+    const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 15000);
+    root.fetch('/api/behavior', {cache: 'no-store', signal: controller.signal})
+      .then(r => r.ok ? r.json() : null)
+      .then(report => {
+        if (request !== behaviorRequest) return;
+        behaviorReport = report && ['hypotheses_available', 'features_only'].includes(report.status) && Array.isArray(report.wallets) && Array.isArray(report.candidates) ? report : null;
+        behaviorState = behaviorReport ? 'loaded' : 'unavailable';
+      })
+      .catch(() => { if (request === behaviorRequest) { behaviorReport = null; behaviorState = 'unavailable'; } })
+      .finally(() => { clearTimeout(timer); if (request === behaviorRequest && data) render(); });
+  }
+  function behaviorEvidence(box) {
+    loadBehavior();
+    if (!behaviorReport) {
+      box.append(el('p', behaviorState === 'loading' ? 'Loading observed behavior…' : 'Behavior evidence unavailable. Existing research and canonical replay evidence remain independent.'));
+      return;
+    }
+    const wallets = behaviorReport.wallets.filter(w => w?.wallet === state.id);
+    if (!wallets.length) box.append(el('p', 'No admitted behavior observations for this wallet in the cached sample.'));
+    wallets.forEach(w => {
+      box.append(el('p', 'Observed buys: ' + text(w.buy_count) + ' · sells: ' + text(w.sell_count) + ' · source: ' + text(w.source) + ' · chain: ' + text(w.chain_id)),
+        el('p', 'Median event cadence: ' + text(w.cadence?.median) + ' seconds. Not holding duration or decision frequency.'),
+        el('p', 'Median source-estimated order size: ' + money(w.order_size_usd?.median) + ' · priced sample: ' + text(w.order_size_usd?.sample_count) + ' · missing/invalid: ' + text(w.order_size_usd?.missing_or_invalid_count)),
+        el('p', 'Observed event IDs: ' + (w.event_ids || []).join(', ')),
+        el('pre', text({window: w.window, attribution: w.attribution, buy_token_concentration: w.buy_token_concentration})));
+    });
+    const candidates = behaviorReport.candidates.filter(c => c?.provenance?.wallet === state.id && c.execution === 'not_run');
+    if (wallets.length && !candidates.length) box.append(el('p', 'Features only: no candidate passed the three priced buys per token experiment gate.'));
+    candidates.forEach(candidate => {
+      const p = candidate.provenance, gene = p.mapped_genes?.min_liquidity;
+      if (!gene || Object.keys(p.mapped_genes).length !== 1) return;
+      const group = el('details');
+      group.append(el('summary', candidate.id + ' · wallet-inspired fly candidate · not_run'));
+      group.append(entity('token', p.token, 'Inspect candidate token ' + short(p.token)),
+        el('p', 'awaiting_matching_market_window · no evaluation or trades run. Not a trained or cloned wallet; no wallet PnL inferred.'),
+        el('p', 'Single hypothetical gene vs engine default: min_liquidity: ' + text(behaviorReport.default_genome?.min_liquidity) + ' → ' + text(gene.value)),
+        el('p', text(gene.formula) + ' · clipped: ' + text(gene.clipped) + '. Experimental liquidity screen, not an observed wallet preference.'),
+        el('p', 'Supporting buy event IDs: ' + (gene.event_ids || []).join(', ')),
+        el('pre', text({candidate_id: candidate.id, genome: candidate.genome, default_genes: p.default_genes, evidence_window: p.evidence_window, available_after: p.available_after})),
+        el('p', 'All other genes are defaults, not learned behavior. Requires matching token/chain market observations strictly after evidence availability and an unchanged default-genome control.'));
+      box.append(group);
+    });
+  }
   function dossier() {
     const box = $('dossier'); box.replaceChildren(); box.hidden = !state.kind || state.tab === 'method'; if (box.hidden) return;
     const close = el('button', '×', 'close'); close.type = 'button'; close.setAttribute('aria-label', 'Close dossier'); close.onclick = () => { root.location.hash = route(state.tab); $('research-panel').focus(); };
@@ -201,7 +249,8 @@
     }
     const replayLink = state.kind === 'wallet' ? walletReplayLink(replayEnvelope, state.id) : null;
     if (state.kind === 'wallet') {
-      box.append(el('h3', 'Canonical seed evidence / admission'));
+      box.append(el('h3', 'Wallet → fly evidence / canonical admission'));
+      behaviorEvidence(box);
       const mappings = (replayEnvelope?.mappings || []).filter(m => m.provenance?.wallet === state.id);
       box.append(el('p', replayLink ? 'Admitted founder exists in this completed simulation. Partial mapping, not recovered wallet strategy.' : 'No exact wallet-to-fly mapping established for this wallet. No admitted replay founder. ' + (replayEnvelope?.blocked_reasons || ['Wallet replay unavailable or wallet not admitted.']).join(' ')));
       mappings.forEach(mapping => box.append(el('pre', text(mapping))));
@@ -226,6 +275,7 @@
     // Independent optional request: failure must never prevent research rendering.
     const replayController = new AbortController(), replayTimer = setTimeout(() => replayController.abort(), 15000);
     replayEnvelope = null;
+    behaviorRequest++; behaviorReport = null; behaviorState = 'idle';
     root.fetch('/api/wallet-replay', {cache: 'no-store', signal: replayController.signal})
       .then(response => response.ok ? response.json() : null)
       .then(envelope => { replayEnvelope = envelope; if (data) render(); })

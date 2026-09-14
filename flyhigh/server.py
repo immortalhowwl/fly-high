@@ -98,6 +98,21 @@ def make_server(port=8765, report=None, directory=None, public=False):
                     self.send(503,{'status':'unavailable','seed_count':0,'replay':None,
                                    'blocked_reasons':['Precomputed wallet replay is missing or invalid.']})
                 else: self.send(200,envelope)
+            elif path=='/api/behavior':
+                # Pure derivation from the persisted envelope, including raw attribution.
+                # Never acquire prices, export seeds, or evaluate a replay on this route.
+                try:
+                    from dataclasses import asdict
+                    from .behavior_candidates import build_behavior_candidates
+                    from .engine import Genome
+                    snapshot=json.loads((lab.directory/'research.snapshot.json').read_text())
+                    behavior=build_behavior_candidates(snapshot)
+                    behavior['default_genome']=asdict(Genome())
+                    behavior['integration_status']='awaiting_matching_market_window'
+                    self.send(200,behavior)
+                except (OSError,ValueError,TypeError,AttributeError,KeyError):
+                    self.send(503,{'status':'unavailable','wallets':[],'candidates':[],
+                                   'error':'Cached behavior evidence is missing or invalid.'})
             elif path=='/api/report': self.send(200,lab.report)
             elif path=='/api/events': self.send(200,lab.report['events'])
             elif path=='/healthz': self.send(200,{'status':'ok'})
