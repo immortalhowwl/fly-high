@@ -45,7 +45,7 @@ class PersistenceTests(unittest.TestCase):
         import tempfile
         import json
         from unittest.mock import patch
-        with tempfile.TemporaryDirectory(dir='/root/projects/fly-high') as directory:
+        with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'snapshot.json'
             with patch.object(research.TrenchesClient, 'fetch', side_effect=lambda key: captures()[key]):
                 result = research.refresh_snapshot(path)

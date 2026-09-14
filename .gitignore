@@ -1,5 +1,6 @@
 # Local runtime state and secrets
-/data/
+/data/*
+!/data/research.snapshot.json
 .env
 .env.*
 !.env.example
