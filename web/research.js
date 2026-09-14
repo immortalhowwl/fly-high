@@ -1,0 +1,196 @@
+/* Read-only upstream research. No synthetic rows, scores, execution or Colony mapping. */
+(function (root) {
+  'use strict';
+  const TABS = ['wallets', 'tape', 'tokens', 'method'], PAGE = 50;
+  const number = value => typeof value === 'number' && Number.isFinite(value) ? value : null;
+  const text = value => value == null ? 'Not supplied' : typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value);
+  const short = value => typeof value === 'string' && value.length > 18 ? value.slice(0, 8) + '…' + value.slice(-6) : text(value);
+  function money(value, signed = false) {
+    const n = number(value);
+    return n === null ? '—' : (n < 0 ? '−' : signed && n > 0 ? '+' : '') + '$' + Math.abs(n).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  }
+  function epoch(value) {
+    if (typeof value === 'number') return value < 1e12 ? value * 1000 : value;
+    return typeof value === 'string' ? Date.parse(value) : NaN;
+  }
+  function date(value) {
+    const n = epoch(value);
+    return Number.isFinite(n) ? new Date(n).toISOString().replace('T', ' ').replace(/\.\d+Z$/, ' UTC') : 'Not supplied';
+  }
+  function freshness(value, now = Date.now()) {
+    const ts = epoch(value);
+    if (!Number.isFinite(ts)) return 'Unknown snapshot age';
+    const seconds = Math.floor((now - ts) / 1000);
+    if (seconds < -60) return 'Clock mismatch · future timestamp';
+    const minutes = Math.floor(Math.max(0, seconds) / 60);
+    return (minutes >= 15 ? 'STALE · ' : 'Snapshot · ') + (minutes < 60 ? minutes + 'm old' : Math.floor(minutes / 60) + 'h ' + minutes % 60 + 'm old');
+  }
+  function parseHash(hash) {
+    const params = new URLSearchParams(hash.replace(/^#/, ''));
+    const tab = TABS.includes(params.get('view')) ? params.get('view') : 'wallets';
+    return {tab, kind: params.has('wallet') ? 'wallet' : params.has('token') ? 'token' : null, id: params.get('wallet') || params.get('token') || null};
+  }
+  function route(tab, kind, id) {
+    const p = new URLSearchParams({view: TABS.includes(tab) ? tab : 'wallets'});
+    if (['wallet', 'token'].includes(kind) && typeof id === 'string' && id) p.set(kind, id);
+    return '#' + p.toString();
+  }
+  function normalize(data) {
+    if (!data || typeof data !== 'object' || !['wallets', 'fills', 'tokens'].every(key => Array.isArray(data[key]))) throw new Error('Invalid research response: expected wallets, fills and tokens arrays.');
+    return {...data, wallets: data.wallets.filter(x => x && typeof x === 'object'), fills: data.fills.filter(x => x && typeof x === 'object'), tokens: data.tokens.filter(x => x && typeof x === 'object'), warnings: Array.isArray(data.warnings) ? data.warnings : []};
+  }
+  function matchingFills(data, kind, id) {
+    return data.fills.filter(fill => fill[kind === 'wallet' ? 'wallet' : 'token'] === id).sort((a,b) => (epoch(b.ts) || 0) - (epoch(a.ts) || 0));
+  }
+  function rowsFor(data, tab, query, sort) {
+    let rows = (tab === 'tape' ? data.fills : tab === 'tokens' ? data.tokens : data.wallets).filter(row => [row.address, row.handle, row.wallet, row.token, row.symbol, row.name, row.tx, row.side].some(v => typeof v === 'string' && v.toLowerCase().includes(query.toLowerCase())) || !query);
+    if (sort !== 'default') rows = [...rows].sort((a,b) => (number(b[sort]) ?? -Infinity) - (number(a[sort]) ?? -Infinity));
+    return rows;
+  }
+  // A rule is displayable only when its evidence points to fills in this response.
+  function supportedRules(wallet, fills) {
+    const ids = new Set(fills.map(f => String(f.id)));
+    return (Array.isArray(wallet.observed_rules) ? wallet.observed_rules : []).filter(rule => rule && typeof rule === 'object' && typeof rule.description === 'string' && Array.isArray(rule.fill_ids) && rule.fill_ids.length && rule.fill_ids.every(id => ids.has(String(id))));
+  }
+  function safeURL(value) {
+    try { const url = new URL(value); return url.protocol === 'https:' && !url.username && !url.password ? url.href : null; } catch (_) { return null; }
+  }
+  function candlesOf(token) {
+    return (Array.isArray(token.candles) ? token.candles : []).map(c => ({ts: epoch(Array.isArray(c) ? c[0] : c.ts), close: number(Array.isArray(c) ? c[4] : c.close)})).filter(c => Number.isFinite(c.ts) && c.close !== null && c.close >= 0).sort((a,b) => a.ts - b.ts);
+  }
+  const api = {money, epoch, date, freshness, parseHash, route, normalize, rowsFor, matchingFills, supportedRules, safeURL, candlesOf};
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  if (!root.document) return;
+  const doc = root.document, $ = id => doc.getElementById(id);
+  let data = null, state = parseHash(root.location.hash), page = 0, loading = false;
+  function el(tag, value, cls) { const node = doc.createElement(tag); if (value != null) node.textContent = String(value); if (cls) node.className = cls; return node; }
+  function link(value, href, cls) { const a = el('a', value, cls); a.href = href; return a; }
+  function signed(value) { return number(value) === null || value === 0 ? '' : value > 0 ? 'positive' : 'negative'; }
+  function entity(kind, id, label) { return id ? link(label || short(id), route(state.tab, kind, String(id))) : el('span', label || 'Unknown'); }
+  function stat(label, value, cls) { const box = el('div', null, 'stat'); box.append(el('span', label, 'label'), el('strong', value, cls)); return box; }
+  function showStatus(message, error = false) { $('status').textContent = message; $('status').className = error ? 'status error' : 'status'; }
+  function header() {
+    $('source').textContent = typeof data.source === 'object' && data.source ? text(data.source.name || data.source.url) : text(data.source); $('window').textContent = text(data.window);
+    $('as-of').textContent = date(data.as_of); $('freshness').textContent = freshness(data.as_of);
+    $('freshness').className = /STALE|Unknown|mismatch/.test($('freshness').textContent) ? 'negative' : '';
+    $('wallet-count').textContent = String(data.wallets.length); $('fill-count').textContent = String(data.fills.length); $('token-count').textContent = String(data.tokens.length);
+    $('warnings').replaceChildren(...data.warnings.map(warning => el('p', text(warning)))); $('warnings').hidden = !data.warnings.length;
+  }
+  function table(headers, rows, render, caption) {
+    const wrap = el('div', null, 'table-wrap'); wrap.tabIndex = 0; wrap.setAttribute('role', 'region'); wrap.setAttribute('aria-label', caption + ' (scroll horizontally for all columns)');
+    const t = el('table'), head = el('thead'), tr = el('tr'), body = el('tbody');
+    headers.forEach(label => { const th = el('th', label); th.scope = 'col'; tr.append(th); }); head.append(tr);
+    rows.forEach(row => { const line = el('tr'); render(row).forEach(value => { const td = el('td'); if (value && typeof value === 'object') td.append(value); else td.textContent = text(value); line.append(td); }); body.append(line); });
+    t.append(el('caption', caption), head, body); wrap.append(t); return wrap;
+  }
+  function pnl(value) { return el('span', money(value, true), 'num ' + signed(value)); }
+  function walletName(row) { const node = el('div'); node.append(entity('wallet', row.address, row.handle || short(row.address)), el('span', short(row.address), 'secondary')); return node; }
+  function tokenName(row) { const node = el('div'); node.append(entity('token', row.token || row.address, row.symbol || row.name || short(row.token || row.address)), el('span', short(row.token || row.address), 'secondary')); return node; }
+  function fillCells(row) { return [date(row.ts), entity('wallet', row.wallet, data.wallets.find(w => w.address === row.wallet)?.handle || short(row.wallet)), entity('token', row.token, row.symbol || short(row.token)), el('span', text(row.side).toUpperCase(), row.side === 'buy' ? 'positive' : row.side === 'sell' ? 'negative' : ''), money(row.usd), number(row.amount) === null ? '—' : row.amount.toLocaleString('en-US', {maximumSignificantDigits: 7}), short(row.tx)]; }
+  function renderList() {
+    const rows = rowsFor(data, state.tab, $('search').value, $('sort').value);
+    const maxPage = Math.max(0, Math.ceil(rows.length / PAGE) - 1); page = Math.min(page, maxPage);
+    const subset = rows.slice(page * PAGE, (page + 1) * PAGE), caption = rows.length + ' matching rows · ' + (state.tab === 'wallets' ? 'PnL and win rate reported by source, not reconstructed from the loaded tape' : state.tab === 'tokens' ? 'Source-reported token summary; liquidity is not an executable price' : 'Observed source fills · not Colony executions');
+    $('results').replaceChildren(); $('pagination').replaceChildren();
+    if (!rows.length) { $('results').append(el('div', $('search').value ? 'No matches in this snapshot. Clear the filter to see all loaded rows.' : 'No ' + state.tab + ' rows supplied. Nothing has been simulated to fill this view.', 'empty')); return; }
+    let node;
+    if (state.tab === 'wallets') node = table(['Wallet / handle', 'Realized USD', 'Unrealized USD', 'Net USD', 'Source fills', 'Win rate'], subset, row => [walletName(row), pnl(row.realized_pnl), pnl(row.unrealized_pnl), pnl(row.net_pnl), number(row.fills) === null ? '—' : row.fills.toLocaleString('en-US'), number(row.win_rate) === null ? '—' : (row.win_rate * 100).toLocaleString('en-US', {maximumFractionDigits: 2}) + '%'], caption);
+    else if (state.tab === 'tokens') node = table(['Token', 'Buyers', 'Bought USD', 'Sold USD', 'Liquidity USD', 'Source flags'], subset, row => [tokenName(row), number(row.buyers) ?? '—', money(row.usd_in), money(row.usd_out), money(row.liquidity), el('span', row.honeypot ? 'HONEYPOT FLAG' : row.drained ? 'DRAINED' : row.parked ? 'PARKED' : 'Not flagged ≠ safe', 'badge ' + (row.honeypot || row.drained ? 'risk' : ''))], caption);
+    else node = table(['Time / UTC', 'Wallet', 'Token', 'Side', 'USD notional', 'Token amount', 'Transaction'], subset, fillCells, caption);
+    $('results').append(node);
+    const prev = el('button', '← Previous'), next = el('button', 'Next →'); prev.type = next.type = 'button'; prev.disabled = page === 0; next.disabled = page >= maxPage;
+    prev.onclick = () => { page--; renderList(); }; next.onclick = () => { page++; renderList(); };
+    $('pagination').append(prev, el('span', (page * PAGE + 1) + '–' + Math.min((page + 1) * PAGE, rows.length) + ' / ' + rows.length), next);
+  }
+  function method() {
+    const section = el('div', null, 'method'); section.append(el('h2', 'What this research can — and cannot — tell you'));
+    const items = [
+      ['01 / Data provenance', 'Read-only /api/research snapshot. Wallet identity, PnL, token marks and fills are upstream indexer claims unless per-record validation is explicitly supplied. A transaction hash is a reference, not proof that this UI independently checked a receipt.'],
+      ['02 / Coverage and window', text(data.coverage) + '\nWindow: ' + text(data.window) + '\nArray counts are the loaded sample. Wallet “Source fills” and token buyer counts can describe a broader upstream window. They are not counts of the tape shown here.'],
+      ['03 / PnL is not executable profit', 'Realized, unrealized and net PnL are shown separately as reported. Win rate is source-reported in percent. Unknown values stay blank (—), not zero. Marks, thin liquidity, missing fees and incomplete opening inventory can make returns misleading. A sell alone does not prove a full exit.'],
+      ['04 / Evidence before rules', 'Wallet dossiers show only observed rules with supporting fill IDs present in the loaded wallet tape. Missing or incomplete history means insufficient validated history, not an inferred strategy. Behavioural descriptions do not establish trading intent or predictive skill.'],
+      ['05 / Freshness', 'Snapshot age is time since as_of, not time since the latest on-chain fill and not a polling SLA. This UI labels snapshots at least 15 minutes old STALE. Refresh explicitly fetches a new response; it cannot make an upstream archive live.'],
+      ['06 / Research ≠ Colony execution', 'Colony is a separate simulation/replay surface. No exact wallet-to-fly mapping is asserted here. Opening Colony does not copy a wallet, seed an agent or execute a trade. No wallet connection, trading orders or Telegram access are implemented in this portal.'],
+      ['07 / Token charts', 'A price line is drawn only from actual timestamped OHLCV candles supplied for the selected token. No candles means no chart. Token summary marks are not a time series. Risk flags come from the source; their absence is not a safety assessment.']
+    ];
+    items.forEach(([title, description]) => { const article = el('article'); article.append(el('h3', title), el('p', description)); section.append(article); });
+    $('results').replaceChildren(section); $('pagination').replaceChildren();
+  }
+  function detailFills(box, fills) {
+    box.append(el('h3', 'Observed fills · ' + fills.length + ' loaded'));
+    if (!fills.length) box.append(el('p', 'No fills for this selection in the loaded sample. This does not prove inactivity.'));
+    // Every selected fill is accessible; disclosure groups keep large dossiers usable.
+    for (let start = 0; start < fills.length; start += 25) {
+      const group = el('details'); group.open = start === 0;
+      group.append(el('summary', 'Rows ' + (start + 1) + '–' + Math.min(start + 25, fills.length)));
+      fills.slice(start, start + 25).forEach(fill => {
+        const row = el('div', null, 'detail-fill'); row.append(el('span', text(fill.side).toUpperCase() + ' ' + money(fill.usd) + ' · ', fill.side === 'sell' ? 'negative' : ''), entity('token', fill.token, fill.symbol || short(fill.token)), el('span', ' / '), entity('wallet', fill.wallet, data.wallets.find(w => w.address === fill.wallet)?.handle || short(fill.wallet)), el('span', date(fill.ts), 'secondary'), el('span', 'Fill ' + text(fill.id), 'secondary'), el('span', 'Tx: ' + text(fill.tx), 'secondary')); group.append(row);
+      }); box.append(group);
+    }
+  }
+  function chart(box, token) {
+    const candles = candlesOf(token);
+    box.append(el('h3', 'Price history'));
+    if (candles.length < 2) { box.append(el('p', 'No usable candle series supplied. A quoted mark is not a chart.')); return; }
+    const min = Math.min(...candles.map(c => c.close)), max = Math.max(...candles.map(c => c.close));
+    const start = candles[0].ts, duration = candles[candles.length - 1].ts - start;
+    if (!duration) { box.append(el('p', 'Insufficient distinct candle timestamps for a chart.')); return; }
+    const svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('viewBox', '0 0 320 140'); svg.setAttribute('class', 'chart'); svg.setAttribute('role', 'img'); svg.setAttribute('aria-label', 'Supplied candle closing prices: ' + candles.length + ' observations. Range ' + min + ' to ' + max);
+    const line = doc.createElementNS('http://www.w3.org/2000/svg', 'polyline'); line.setAttribute('points', candles.map(c => (8 + (c.ts - start) / duration * 304).toFixed(2) + ',' + (max === min ? 70 : 128 - (c.close - min) / (max - min) * 116).toFixed(2)).join(' ')); line.setAttribute('fill', 'none'); line.setAttribute('stroke', 'currentColor'); line.setAttribute('stroke-width', '2'); svg.append(line); box.append(svg, el('p', candles.length + ' supplied candle closes · ' + text(token.chart_source || token.source || data.source)), el('p', date(start) + ' → ' + date(candles[candles.length - 1].ts) + '\nPrice range: ' + min + ' – ' + max));
+  }
+  function dossier() {
+    const box = $('dossier'); box.replaceChildren(); box.hidden = !state.kind || state.tab === 'method'; if (box.hidden) return;
+    const close = el('button', '×', 'close'); close.type = 'button'; close.setAttribute('aria-label', 'Close dossier'); close.onclick = () => { root.location.hash = route(state.tab); $('research-panel').focus(); };
+    box.append(close, el('span', state.kind + ' / dossier', 'eyebrow'));
+    const record = (state.kind === 'wallet' ? data.wallets : data.tokens).find(row => (state.kind === 'wallet' ? row.address : row.token || row.address) === state.id);
+    box.append(el('h2', record?.handle || record?.symbol || record?.name || short(state.id)), el('div', state.id, 'address'));
+    if (!record) box.append(el('p', 'No summary row for this address in the snapshot. Related observed fills, if any, remain available below.'));
+    const fills = matchingFills(data, state.kind, state.id);
+    if (record && state.kind === 'wallet') {
+      const stats = el('div', null, 'stats'); stats.append(stat('Realized', money(record.realized_pnl, true), signed(record.realized_pnl)), stat('Unrealized', money(record.unrealized_pnl, true), signed(record.unrealized_pnl)), stat('Net PnL', money(record.net_pnl, true), signed(record.net_pnl)), stat('Loaded fills', fills.length)); box.append(stats);
+    }
+    if (record && state.kind === 'token') {
+      const stats = el('div', null, 'stats'); stats.append(stat('Liquidity', money(record.liquidity)), stat('Mark / USD', number(record.mark) === null ? '—' : String(record.mark)), stat('Bought / source', money(record.usd_in)), stat('Sold / source', money(record.usd_out))); box.append(stats);
+      if (record.drained || record.honeypot || record.parked) box.append(el('p', 'Source flags: ' + ['drained', 'honeypot', 'parked'].filter(k => record[k]).join(', '), 'negative'));
+      const pair = safeURL(record.pair_url); if (pair) { const a = link('View source pair ↗', pair); a.target = '_blank'; a.rel = 'noopener noreferrer'; box.append(a); }
+      chart(box, record);
+    }
+    detailFills(box, fills);
+    if (state.kind === 'wallet') {
+      box.append(el('h3', 'Rule evidence'));
+      const rules = record ? supportedRules(record, fills) : [];
+      if (!rules.length) box.append(el('p', 'Insufficient validated history to describe this wallet’s strategy. Loaded fills do not establish position sizing, inventory, intent or a repeatable rule.'));
+      rules.forEach(rule => { box.append(el('p', rule.description), el('span', 'Supporting fill IDs: ' + rule.fill_ids.join(', '), 'secondary')); });
+    }
+    box.append(el('h3', 'Continue to Colony'), el('p', 'Explore the separate simulation. No exact wallet-to-fly mapping or automatic strategy seeding is established.'), link('Open Colony ↗', '/', 'colony'));
+  }
+  function render() {
+    doc.querySelectorAll('[data-tab]').forEach(button => { const active = button.dataset.tab === state.tab; button.setAttribute('aria-selected', String(active)); button.tabIndex = active ? 0 : -1; });
+    $('research-panel').setAttribute('aria-labelledby', 'tab-' + state.tab); $('list-tools').hidden = state.tab === 'method';
+    if (!data) return;
+    if (state.tab === 'method') method(); else renderList(); dossier();
+  }
+  async function load() {
+    if (loading) return; loading = true; $('refresh').disabled = true; $('research-panel').setAttribute('aria-busy', 'true'); showStatus(data ? 'Refreshing… Previous snapshot remains visible.' : 'Loading research snapshot…');
+    const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 20000);
+    try {
+      const response = await root.fetch('/api/research', {headers: {Accept: 'application/json'}, cache: 'no-store', signal: controller.signal});
+      if (!response.ok) throw new Error('Research API returned HTTP ' + response.status);
+      data = normalize(await response.json()); header(); render(); showStatus('Snapshot loaded · read-only upstream data · select a wallet or token to inspect its evidence.');
+    } catch (error) {
+      showStatus((data ? 'Refresh failed; previous snapshot retained. ' : 'Research unavailable. ') + (error.name === 'AbortError' ? 'Request timed out.' : error.message) + ' Use Refresh snapshot to retry.', true);
+      if (!data) $('results').replaceChildren(el('div', 'No research data loaded. The Colony remains accessible; no demo data is substituted.', 'empty'));
+    } finally { clearTimeout(timer); loading = false; $('refresh').disabled = false; $('research-panel').setAttribute('aria-busy', 'false'); }
+  }
+  $('refresh').onclick = load;
+  $('search').oninput = () => { page = 0; render(); }; $('sort').onchange = () => { page = 0; render(); };
+  const tabs = [...doc.querySelectorAll('[data-tab]')];
+  tabs.forEach((button, i) => { button.onclick = () => { root.location.hash = route(button.dataset.tab); }; button.onkeydown = event => {
+    const target = event.key === 'ArrowRight' ? (i + 1) % tabs.length : event.key === 'ArrowLeft' ? (i + tabs.length - 1) % tabs.length : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : -1;
+    if (target >= 0) { event.preventDefault(); tabs[target].focus(); tabs[target].click(); }
+  }; });
+  root.addEventListener('hashchange', () => { state = parseHash(root.location.hash); page = 0; render(); if (state.kind && !$('dossier').hidden) $('dossier').focus(); });
+  doc.addEventListener('keydown', event => { if (event.key === 'Escape' && state.kind) { root.location.hash = route(state.tab); $('research-panel').focus(); } });
+  setInterval(() => { if (data) $('freshness').textContent = freshness(data.as_of); }, 60000);
+  render(); load();
+})(typeof window !== 'undefined' ? window : globalThis);

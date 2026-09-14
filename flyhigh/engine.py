@@ -25,6 +25,13 @@ class Genome:
                 raise ValueError('out of bounds genome: ' + key)
 
 
+@dataclass(frozen=True)
+class SeedGenome:
+    """Optional supplied candidate plus JSON evidence; never an observed strategy."""
+    genome: Genome
+    provenance: dict
+
+
 def simulate(genome, bars, fee=0.003, slippage=0.002, max_gap=180, policy='genome', seed=1):
     bars = validate(bars)
     if not 0 <= fee < 0.1 or not 0 <= slippage < 0.1 or max_gap <= 0:
@@ -99,12 +106,36 @@ def simulate(genome, bars, fee=0.003, slippage=0.002, max_gap=180, policy='genom
             'mark_note':'Cash plus inventory within the modeled one-observation exit cap, net of costs; excess inventory valued at zero for fitness. Not an executed closing trade.'}
 
 
-def evolve(bars, seed=17, population=24, generations=6, max_gap=180):
+def evolve(bars, seed=17, population=24, generations=6, max_gap=180, seed_genomes=None):
     bars = validate(bars)
     if len(bars) < 80 or not 6 <= population <= 64 or not 1 <= generations <= 20:
         raise ValueError('need >=80 observations, population 6..64, generations 1..20')
     split = int(len(bars)*0.7)
     train, holdout = bars[:split], bars[split:]
+    if seed_genomes is None:
+        seed_genomes = []
+    if type(seed_genomes) not in (list, tuple) or len(seed_genomes) > population:
+        raise ValueError('seed_genomes must be a list/tuple no larger than population')
+    supplied = []
+    for item in seed_genomes:
+        if isinstance(item, Genome):
+            genome, provenance = item, {'kind': 'supplied_genome'}
+        elif isinstance(item, SeedGenome) and isinstance(item.genome, Genome):
+            genome, provenance = item.genome, item.provenance
+        else:
+            raise ValueError('each seed must be Genome or SeedGenome')
+        if type(provenance) is not dict or type(provenance.get('kind')) is not str or not provenance['kind']:
+            raise ValueError('seed provenance needs a nonempty kind')
+        try:
+            provenance = json.loads(json.dumps(provenance, allow_nan=False, sort_keys=True))
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError('seed provenance must be finite JSON data') from exc
+        if provenance['kind'] == 'wallet_observations':
+            cutoff = provenance.get('observed_until')
+            if type(cutoff) is not int or not 0 < cutoff <= train[-1]['timestamp']:
+                raise ValueError('wallet evidence must end no later than training cutoff')
+        # Validate a fresh value and detach caller metadata before hashing events.
+        supplied.append((asdict(Genome(**asdict(genome))), provenance))
     rng = random.Random(seed)
     events, history = [], []
     serial = 0
@@ -116,14 +147,19 @@ def evolve(bars, seed=17, population=24, generations=6, max_gap=180):
     def random_genome():
         return {k: rng.randint(lo, hi) if k in ('lookback','hold') else rng.uniform(lo,hi)
                 for k,(lo,hi) in BOUNDS.items()}
-    def born(g, generation, parents=None, mutations=None):
+    def born(g, generation, parents=None, mutations=None, seed_origin=None):
         nonlocal serial
         serial += 1
         fly = {'id':f'F{serial:04d}', 'genome':g, 'parents':parents or [], 'mutations':mutations or [],
                'born':generation}
-        event('birth', generation, fly=fly['id'], parents=fly['parents'], mutations=fly['mutations'])
+        if seed_origin is not None:
+            fly['seed_origin'] = seed_origin
+        event('birth', generation, fly=fly['id'], parents=fly['parents'], mutations=fly['mutations'],
+              **({'seed_origin': seed_origin} if seed_origin is not None else {}))
         return fly
-    flies = [born(random_genome(), 0) for _ in range(population)]
+    flies = [born(g, 0, seed_origin={'index': i, 'provenance': provenance})
+             for i, (g, provenance) in enumerate(supplied)]
+    flies.extend(born(random_genome(), 0) for _ in range(population - len(supplied)))
     for generation in range(generations):
         evaluated = []
         for fly in flies:

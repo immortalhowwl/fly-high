@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#090c0b">
+<title>Research · FLY HIGH</title>
+<link rel="stylesheet" href="/research.css">
+<script src="/research.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#research-panel">Skip to research</a>
+<header class="masthead"><a class="brand" href="/" aria-label="FLY HIGH home">FLY HIGH<span>RESEARCH / 01</span></a><a class="colony" href="/">↗ Open Colony</a></header>
+<main>
+<section class="intro"><div><p class="eyebrow">OBSERVED WALLETS · ROBINHOOD CHAIN</p><h1>Follow the evidence.</h1><p class="lede">Wallets, token flows and the fills behind them. Research data stays separate from the Colony simulation.</p></div><button id="refresh" type="button">Refresh snapshot ↻</button></section>
+<section class="provenance" aria-label="Snapshot provenance"><div><span class="label">Source</span><strong id="source">Awaiting API</strong></div><div><span class="label">Observation window</span><strong id="window">—</strong></div><div><span class="label">Snapshot / UTC</span><strong id="as-of">—</strong></div><div><span class="label">Freshness</span><strong id="freshness">Not loaded</strong></div></section>
+<div id="status" class="status" role="status" aria-live="polite">Loading research snapshot…</div>
+<div id="warnings" class="warnings" hidden></div>
+<section class="counts" aria-label="Rows in this snapshot"><div><strong id="wallet-count">—</strong><span>Wallet rows</span></div><div><strong id="fill-count">—</strong><span>Observed fill rows</span></div><div><strong id="token-count">—</strong><span>Token rows</span></div><p>Counts describe this response,<br>not the source’s entire history.</p></section>
+<nav class="tabs" role="tablist" aria-label="Research views"><button type="button" id="tab-wallets" role="tab" aria-selected="true" aria-controls="research-panel" data-tab="wallets">Wallets</button><button type="button" id="tab-tape" role="tab" aria-selected="false" tabindex="-1" aria-controls="research-panel" data-tab="tape">Tape</button><button type="button" id="tab-tokens" role="tab" aria-selected="false" tabindex="-1" aria-controls="research-panel" data-tab="tokens">Tokens</button><button type="button" id="tab-method" role="tab" aria-selected="false" tabindex="-1" aria-controls="research-panel" data-tab="method">Method</button></nav>
+<section id="research-panel" role="tabpanel" aria-labelledby="tab-wallets" tabindex="0" aria-busy="true">
+<div class="workspace"><div class="list-pane"><div class="list-tools" id="list-tools"><label for="search">Filter this snapshot<input type="search" id="search" placeholder="Handle, wallet or token…" autocomplete="off"></label><label for="sort">Order<select id="sort"><option value="default">Source order</option><option value="net_pnl">Net PnL ↓</option><option value="ts">Most recent fill</option><option value="liquidity">Liquidity ↓</option></select></label></div><div id="results"></div><div id="pagination" class="pagination"></div></div><aside id="dossier" class="dossier" aria-label="Selected dossier" hidden tabindex="-1"></aside></div>
+</section>
+<footer><span>READ-ONLY RESEARCH / No orders. No wallet connection.</span><a href="/#">Return to Colony ↗</a></footer>
+</main>
+</body>
+</html>

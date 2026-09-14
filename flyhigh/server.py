@@ -84,8 +84,15 @@ def make_server(port=8765, report=None, directory=None, public=False):
             elif path=='/api/report': self.send(200,lab.report)
             elif path=='/api/events': self.send(200,lab.report['events'])
             elif path=='/healthz': self.send(200,{'status':'ok'})
-            elif path in ('/','/app.js','/motion.js','/playback.js','/style.css'):
-                name='index.html' if path=='/' else path[1:]
+            elif path=='/api/research':
+                try:
+                    from .research import load_snapshot
+                    snapshot=load_snapshot()
+                    self.send(200,snapshot)
+                except (OSError,ValueError):
+                    self.send(503,{'error':'Research snapshot is not available yet'})
+            elif path in ('/','/research','/app.js','/motion.js','/playback.js','/style.css','/research.js','/research.css'):
+                name={'/':'index.html','/research':'research.html'}.get(path,path[1:])
                 types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8'}
                 self.send(200,(WEB/name).read_bytes(),types[Path(name).suffix])
             else: self.send(404,{'error':'not found'})
@@ -149,9 +156,20 @@ def main():
                       'holdout_return':report['holdout']['return'],'baselines':{k:v['return'] for k,v in report['baselines'].items()}}))
     if not args.no_server:
         server=make_server(args.port,report,public=args.public)
+        refresh_stop=threading.Event()
+        if args.public:
+            def refresh_research():
+                from .research import refresh_snapshot
+                while not refresh_stop.is_set():
+                    try: refresh_snapshot()
+                    except Exception as exc: print(f'Research refresh unavailable: {type(exc).__name__}',flush=True)
+                    refresh_stop.wait(900)
+            threading.Thread(target=refresh_research,daemon=True).start()
         print(f'FLY HIGH {"public historical replay" if args.public else "local lab"} port {server.server_port}',flush=True)
         try: server.serve_forever()
         except KeyboardInterrupt: pass
-        finally: server.server_close()
+        finally:
+            refresh_stop.set()
+            server.server_close()
 
 if __name__=='__main__': main()
