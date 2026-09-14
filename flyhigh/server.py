@@ -153,9 +153,41 @@ def make_server(port=8765, report=None, directory=None, public=False):
                     self.send(200,snapshot)
                 except (OSError,ValueError):
                     self.send(503,{'error':'Research snapshot is not available yet'})
-            elif path in ('/','/research','/app.js','/motion.js','/playback.js','/style.css','/research.js','/research.css'):
+            elif path=='/fly-hero.mp4':
+                import re
+                asset=WEB/'fly-hero.mp4'
+                size=asset.stat().st_size
+                start,end=0,size-1
+                requested=self.headers.get('Range')
+                if requested:
+                    match=re.fullmatch(r'bytes=(\d*)-(\d*)',requested)
+                    if not match or not any(match.groups()):
+                        self.send(416,{'error':'invalid range'}); return
+                    a,b=match.groups()
+                    if a:
+                        start=int(a); end=min(int(b),size-1) if b else size-1
+                    else:
+                        start=max(0,size-int(b))
+                    if start>end or start>=size:
+                        self.send(416,{'error':'unsatisfiable range'}); return
+                self.send_response(206 if requested else 200)
+                self.send_header('Content-Type','video/mp4')
+                self.send_header('Accept-Ranges','bytes')
+                self.send_header('Content-Length',str(end-start+1))
+                if requested: self.send_header('Content-Range',f'bytes {start}-{end}/{size}')
+                self.end_headers()
+                with asset.open('rb') as stream:
+                    stream.seek(start)
+                    remaining=end-start+1
+                    try:
+                        while remaining:
+                            chunk=stream.read(min(65536,remaining))
+                            if not chunk: break
+                            self.wfile.write(chunk); remaining-=len(chunk)
+                    except (BrokenPipeError,ConnectionResetError): pass
+            elif path in ('/','/research','/app.js','/motion.js','/playback.js','/code-background.js','/hero.js','/hero.css','/fly-hero.jpg','/style.css','/research.js','/research.css'):
                 name={'/':'index.html','/research':'research.html'}.get(path,path[1:])
-                types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8'}
+                types={'.jpg':'image/jpeg','.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8'}
                 self.send(200,(WEB/name).read_bytes(),types[Path(name).suffix])
             else: self.send(404,{'error':'not found'})
         def do_POST(self):
