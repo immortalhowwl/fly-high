@@ -8,6 +8,41 @@ A local, inspectable evolutionary paper-trading lab. Each fly carries a bounded 
 
 No wallet connection. No private keys. No live orders. Python standard library; no package install or API key required for the offline lab.
 
+## Public Railway replay
+
+The Dockerfile starts `python -m flyhigh.server --public`, binding **0.0.0.0**
+on Railway's `PORT` (8080 in the image). Public mode loads
+`examples/copy.report.json` by default, without rerunning evolution or using an API.
+The container uses only Python's standard library and runs as an unprivileged user.
+
+Set `FLYHIGH_ALLOWED_HOSTS=flyhigh.fun` in the Logics Railway service. This is an
+exact, comma-separated Host allowlist, not suffix matching; do not include schemes,
+paths or wildcards. `RAILWAY_PUBLIC_DOMAIN`, when Railway supplies it, is automatically
+added. Attach `flyhigh.fun` to that service and configure DNS using Railway's displayed
+record. Railway terminates TLS; do not expose the Python origin directly to the Internet.
+These are deployment instructions, not a claim that deployment or DNS is complete.
+
+Each browser tab owns its playback cursor and run/pause/reset/replay/next-generation
+controls. No cookies, server sessions, shared public controls, live collector, orders,
+or continuous evolution are involved. Refresh resets that tab. Playback stops at the
+end of the fixed archive. Historical prices are authentic; execution liquidity remains
+an explicit assumption. Exports contain the already computed holdout.
+
+Public POSTs require an exact **HTTPS same Origin** and are then rejected with 405:
+all playback controls are browser-local. Other/missing origins return 403. Host checks
+apply to every served route, including `/healthz`. Requests have a 10-second socket
+inactivity timeout; browser fetches abort after 15 seconds. The stdlib origin should
+remain behind Railway's edge; it is not a standalone hardened Internet HTTP server.
+If enabling Railway health checks, ensure its probe Host is explicitly allowed (Railway
+may use `healthcheck.railway.app`); add only that exact host to the environment allowlist.
+
+Local deployment smoke check:
+```sh
+PORT=8080 FLYHIGH_ALLOWED_HOSTS=flyhigh.fun python3 -m flyhigh.server --public
+# In another shell:
+curl -H 'Host: flyhigh.fun' http://127.0.0.1:8080/healthz
+```
+
 ## Run the lab
 
 Requires Python 3.10+; Node.js 18+ only for motion tests.
@@ -71,7 +106,7 @@ The snapshot search is limited to provider results matching `chainId=robinhood`;
 
 ```sh
 python3 -m unittest discover -s tests -v
-node --test tests/motion.test.js
+node --test tests/*.test.js
 ```
 
 CI runs both commands. Tests cover chronological validation, next-observation execution, gaps, costs, deterministic evolution, lineage, collector identity filtering, server controls/origin checks, the OHLCV adapter and distinct motion.
@@ -82,7 +117,7 @@ CI runs both commands. Tests cover chronological validation, next-observation ex
 - `flyhigh/data.py`: strict observed-bar validation and explicit synthetic fixture.
 - `flyhigh/import_history.py`: authentic OHLCV scenario replay.
 - `flyhigh/collector.py`: prospective public snapshots and single-pair export.
-- `flyhigh/server.py`, `web/`: loopback visual lab.
+- `flyhigh/server.py`, `web/`: loopback lab and explicit read-only public replay.
 - `examples/`: canonical history, raw receipts, provenance and computed COPY replay.
 - [Methodology](docs/METHODOLOGY.md): assumptions and failure modes.
 

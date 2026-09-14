@@ -1,22 +1,24 @@
 'use strict';
 const $=id=>document.getElementById(id),world=$('world'),ctx=world.getContext('2d');
 let state=null,selected=null,flies=[],generation=0,bar=0,positions=[],visualTime=0,lastFrame=0,lastRender='';
+let playback=null;
 const number=(n,d=2)=>Number(n).toLocaleString('en-US',{maximumFractionDigits:d,minimumFractionDigits:d});
 const text=(id,value)=>$(id).textContent=value;
 function element(tag,content,cls){const e=document.createElement(tag);e.textContent=content;if(cls)e.className=cls;return e;}
-async function request(path,options){const response=await fetch(path,options);if(!response.ok)throw Error('HTTP '+response.status);return response.json();}
-async function poll(){try{const next=await request('/api/state'+(state?'?brief=1':''));state={...state,...next};update();text('connection','● LOCAL ENGINE CONNECTED');text('error','');}catch(e){text('connection','DISCONNECTED');text('error',e.message);}finally{setTimeout(poll,1000);}}
-for(const button of document.querySelectorAll('[data-action]'))button.onclick=async()=>{try{state=await request('/api/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:button.dataset.action})});update();}catch(e){text('error',e.message);}};
+async function request(path,options){const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);try{const response=await fetch(path,{...options,signal:controller.signal});if(!response.ok)throw Error('HTTP '+response.status);return await response.json();}finally{clearTimeout(timer);}}
+function syncPlayback(){state.cursor=Math.floor(playback.cursor);state.running=playback.running;}
+async function poll(){try{const next=await request('/api/state'+(state?'?brief=1':''));state={...state,...next};if(state.public&&!playback)playback=new Playback(state.report);update();text('connection',state.public?'● HISTORICAL ARCHIVE · LOCAL PLAYBACK':'● LOCAL ENGINE CONNECTED');text('error','');}catch(e){text('connection','DISCONNECTED');text('error',e.message);}finally{if(!state?.public)setTimeout(poll,1000);}}
+for(const button of document.querySelectorAll('[data-action]'))button.onclick=async()=>{try{if(!state)return;if(playback){playback.control(button.dataset.action);syncPlayback();}else state=await request('/api/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:button.dataset.action})});update();}catch(e){text('error',e.message);}};
 function update(){
  const r=state.report;generation=Math.floor(state.cursor/r.split);bar=state.cursor%r.split;const gen=r.generations[generation];flies=gen.flies;
  if(!flies.some(f=>f.id===selected))selected=flies[0].id;
  const modeLabel=r.mode==='historical_prices_assumed_liquidity'?'MARKET REPLAY':r.mode.toUpperCase();
- text('mode',modeLabel);text('phase',state.running?'TRAINING REPLAY RUNNING':'OBSERVER PAUSED');text('generation','GEN '+String(generation).padStart(2,'0'));
+ text('mode',modeLabel);text('phase',state.running?'ARCHIVED TRAINING REPLAY RUNNING':'ARCHIVED REPLAY PAUSED');text('generation','GEN '+String(generation).padStart(2,'0'));
  text('bar','OBSERVATION '+(bar+1)+' / '+r.split);text('big-count',flies.length);text('diversity',gen.diversity+' UNIQUE GENOMES');
  const sourceLabel=typeof r.source==='object'?r.source.symbol+' · '+r.source.provider+' · execution liquidity assumed':(r.source||'seeded offline fixture');
  text('source-badge',modeLabel+' · '+sourceLabel);
  const c=state.collector;
- text('source-status',(c.fresh?'LIVE SNAPSHOTS':'SNAPSHOTS / '+c.status.toUpperCase())+' · '+c.verified_pairs+' PAIRS'+(c.observed_at?' · '+new Date(c.observed_at*1000).toISOString():''));
+ text('source-status',state.public?'HISTORICAL ARCHIVE · NOT LIVE · NO CONTINUOUS EVOLUTION':(c.fresh?'LIVE SNAPSHOTS':'SNAPSHOTS / '+c.status.toUpperCase())+' · '+c.verified_pairs+' PAIRS'+(c.observed_at?' · '+new Date(c.observed_at*1000).toISOString():''));
  $('tokens').replaceChildren();
  const observed=r.bars[bar];
  const input=element('div','','token');
@@ -25,7 +27,7 @@ function update(){
  for(const row of (c.rows||[]).slice(0,5)){
   const e=element('div','','token');e.append(element('strong',row.symbol+' / '+row.quote),element('div','$'+number(row.price,8),'price'),element('small','LIQUIDITY $'+number(row.liquidity)),element('small','CHAIN '+row.chain),element('small','TOKEN '+row.token_address),element('small','POOL '+row.pair_address));$('tokens').append(e);
  }
- if(!c.rows?.length)$('tokens').append(element('p','No verified market snapshots. Start the explicit collector; no fallback data is displayed.'));
+ if(!c.rows?.length)$('tokens').append(element('p',state.public?'Public view replays a fixed, precomputed historical report. Controls affect only this tab; no retraining or live trading.':'No verified market snapshots. Start the explicit collector; no fallback data is displayed.'));
  const key=generation+':'+selected;
  if(lastRender!==key){$('roster').replaceChildren();for(const fly of flies){const b=element('button',fly.id,fly.id===selected?'active':'');b.onclick=()=>{selected=fly.id;update();};$('roster').append(b);}lastRender=key;}
  inspect();
@@ -48,6 +50,7 @@ function inspect(){
 }
 function draw(ts){
  const elapsed=Math.min(.05,(ts-lastFrame)/1000||0);lastFrame=ts;if(state?.running)visualTime+=elapsed;
+ if(playback?.running){const previous=state.cursor;playback.tick(elapsed);syncPlayback();if(previous!==state.cursor||!state.running)update();}
  const rect=world.getBoundingClientRect(),w=rect.width,h=rect.height,dpr=window.devicePixelRatio||1;
  if(world.width!==Math.round(w*dpr)||world.height!==Math.round(h*dpr)){world.width=Math.round(w*dpr);world.height=Math.round(h*dpr);}
  ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);

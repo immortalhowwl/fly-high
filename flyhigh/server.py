@@ -1,7 +1,8 @@
-"""Loopback-only research server with a strict route allowlist."""
+"""Local research lab or explicit read-only public historical replay."""
 import argparse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import os
 from pathlib import Path
 import threading
 import time
@@ -46,9 +47,15 @@ class Lab:
             return self.state()
 
 
-def make_server(port=8765, report=None, directory=None):
+def make_server(port=8765, report=None, directory=None, public=False):
+    if public and report is None:
+        report=json.loads((ROOT/'examples/copy.report.json').read_text())
+    hosts=set(filter(None, (h.strip() for h in os.environ.get('FLYHIGH_ALLOWED_HOSTS','flyhigh.fun').split(','))))
+    railway=os.environ.get('RAILWAY_PUBLIC_DOMAIN','').strip()
+    if railway: hosts.add(railway)
     lab=Lab(report or evolve(synthetic()),directory or ROOT/'data')
     class Handler(BaseHTTPRequestHandler):
+        timeout=10
         def log_message(self,*args): pass
         def send(self,status,body,ctype='application/json'):
             if not isinstance(body,bytes): body=json.dumps(body,allow_nan=False).encode()
@@ -57,29 +64,38 @@ def make_server(port=8765, report=None, directory=None):
             self.send_header('Content-Length',str(len(body)))
             self.send_header('Cache-Control','no-store')
             self.send_header('X-Content-Type-Options','nosniff')
+            self.send_header('Referrer-Policy','same-origin')
             self.send_header('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'")
             self.end_headers(); self.wfile.write(body)
         def allowed(self):
             host=self.headers.get('Host','')
+            if len(self.headers.get_all('Host',[])) != 1: return False
+            if public: return host in hosts
             return host in (f'127.0.0.1:{self.server.server_port}',f'localhost:{self.server.server_port}')
         def do_GET(self):
-            if not self.allowed(): self.send(403,{'error':'loopback Host required'}); return
+            if not self.allowed(): self.send(403,{'error':'allowed Host required'}); return
             path=urlsplit(self.path).path
             if path=='/api/state':
-                state=lab.state()
+                state=({'public':True,'running':False,'cursor':0,'report':lab.report,
+                        'collector':{'status':'disabled_public_replay','rows':[],'verified_pairs':0,'fresh':False}}
+                       if public else lab.state())
                 if urlsplit(self.path).query=='brief=1': state.pop('report',None)
                 self.send(200,state)
             elif path=='/api/report': self.send(200,lab.report)
             elif path=='/api/events': self.send(200,lab.report['events'])
-            elif path in ('/','/app.js','/motion.js','/style.css'):
+            elif path=='/healthz': self.send(200,{'status':'ok'})
+            elif path in ('/','/app.js','/motion.js','/playback.js','/style.css'):
                 name='index.html' if path=='/' else path[1:]
                 types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8'}
                 self.send(200,(WEB/name).read_bytes(),types[Path(name).suffix])
             else: self.send(404,{'error':'not found'})
         def do_POST(self):
             origin=self.headers.get('Origin')
-            if not self.allowed() or (origin and origin != 'http://'+self.headers.get('Host','')):
+            expected=('https://' if public else 'http://')+self.headers.get('Host','')
+            if not self.allowed() or (public and origin != expected) or (origin and origin != expected):
                 self.send(403,{'error':'same origin required'}); return
+            if public:
+                self.send(405,{'error':'public replay controls run only in your browser'}); return
             if self.path!='/api/control': self.send(404,{'error':'not found'}); return
             if self.headers.get('Content-Type','').split(';')[0]!='application/json':
                 self.send(415,{'error':'application/json required'}); return
@@ -89,14 +105,15 @@ def make_server(port=8765, report=None, directory=None):
                 payload=json.loads(self.rfile.read(length))
                 self.send(200,lab.control(payload['action']))
             except (ValueError,KeyError,TypeError) as exc: self.send(400,{'error':str(exc)})
-    server=ThreadingHTTPServer(('127.0.0.1',port),Handler)
+    server=ThreadingHTTPServer(('0.0.0.0' if public else '127.0.0.1',port),Handler)
     server.lab=lab
     return server
 
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--port',type=int,default=8765)
+    parser.add_argument('--port',type=int,default=int(os.environ.get('PORT','8765')))
+    parser.add_argument('--public',action='store_true',help='read-only public archive; bind all interfaces; browser-local playback')
     parser.add_argument('--input',help='explicit CSV/JSON observed series; no synthetic fallback')
     parser.add_argument('--load-report',help='replay an existing generated report without rerunning selection or holdout')
     parser.add_argument('--seed',type=int,default=17)
@@ -104,6 +121,8 @@ def main():
     parser.add_argument('--report',help='write deterministic report JSON')
     parser.add_argument('--no-server',action='store_true')
     args=parser.parse_args()
+    if args.public and not args.load_report and not args.input:
+        args.load_report=str(ROOT/'examples/copy.report.json')
     if args.load_report:
         if args.input: parser.error('--input and --load-report are mutually exclusive')
         report=json.loads(Path(args.load_report).read_text())
@@ -129,8 +148,8 @@ def main():
     print(json.dumps({'mode':report['mode'],'champion':report['champion']['id'],
                       'holdout_return':report['holdout']['return'],'baselines':{k:v['return'] for k,v in report['baselines'].items()}}))
     if not args.no_server:
-        server=make_server(args.port,report)
-        print(f'FLY HIGH http://127.0.0.1:{server.server_port}',flush=True)
+        server=make_server(args.port,report,public=args.public)
+        print(f'FLY HIGH {"public historical replay" if args.public else "local lab"} port {server.server_port}',flush=True)
         try: server.serve_forever()
         except KeyboardInterrupt: pass
         finally: server.server_close()
