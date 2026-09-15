@@ -30,7 +30,7 @@ async function pollWallet(){
   const e=walletEnvelope,r=e.replay;
   if(e.status!=='completed'||(hypothesisMode&&e.evaluation_kind!=='retrospective')||!Number.isInteger(e.seed_count)||e.seed_count<1||!r?.generations?.length||!r.split){
    const reason=(e.blocked_reasons||[]).join('\n')||'No admitted wallet seeds in a completed replay.';
-   state=null;playback=null;flies=[];text('mode',replayLabel+(e.status==='blocked'?' / BLOCKED':' / UNAVAILABLE'));text('connection','NO SEEDED REPLAY');text('source-badge','NO SEEDED REPLAY');text('source-status','NOT RUN · no archive substituted');text('phase','NO SIMULATION RUN');text('error',reason);walletStatus(reason,true);return;
+   state=null;playback=null;flies=[];text('mode',replayLabel+(e.status==='blocked'?' / BLOCKED':' / UNAVAILABLE'));text('connection','NO SEEDED REPLAY');text('source-status','NOT RUN · no archive substituted');text('phase','NO SIMULATION RUN');text('error',reason);walletStatus(reason,true);return;
   }
   state={public:true,running:false,cursor:0,report:r,collector:{rows:[],fresh:false,status:'disabled_wallet_replay'}};
   const wanted=new URLSearchParams(window.location.search).get('wallet');
@@ -38,7 +38,7 @@ async function pollWallet(){
   playback=new Playback(r);update();text('connection','● '+replayLabel+' · LOCAL PLAYBACK');text('error','');
   walletStatus((wanted&&!r.generations[0].flies.some(f=>f.seed_origin?.provenance?.wallet===wanted)?'Requested wallet is not admitted; showing the separate admitted population. ':'')+'Simulation · '+e.seed_count+(hypothesisMode?' wallet-inspired founders':' admitted founders')+' · exits assumed. Click a fly to see its story.');
   text('replay-details','Simulation, not wallet execution or recovered strategy. '+overlapText(e)+' '+(e.limits||[]).join(' '));
- }catch(e){state=null;playback=null;flies=[];text('mode',replayLabel+' / UNAVAILABLE');text('connection','NO SEEDED REPLAY');text('source-badge','NO SEEDED REPLAY');text('source-status','UNAVAILABLE · no archive substituted');text('phase','NO SIMULATION RUN');text('error',e.message);walletStatus('Precomputed wallet replay unavailable. '+e.message,true);}
+ }catch(e){state=null;playback=null;flies=[];text('mode',replayLabel+' / UNAVAILABLE');text('connection','NO SEEDED REPLAY');text('source-status','UNAVAILABLE · no archive substituted');text('phase','NO SIMULATION RUN');text('error',e.message);walletStatus('Precomputed wallet replay unavailable. '+e.message,true);}
 }
 const number=(n,d=2)=>Number(n).toLocaleString('en-US',{maximumFractionDigits:d,minimumFractionDigits:d});
 const text=(id,value)=>$(id).textContent=value;
@@ -54,7 +54,7 @@ function update(){
  text('mode',modeLabel);text('phase',state.running?'ARCHIVED TRAINING REPLAY RUNNING':'ARCHIVED REPLAY PAUSED');text('generation','GEN '+String(generation).padStart(2,'0'));
  text('bar','OBSERVATION '+(bar+1)+' / '+r.split);text('big-count',flies.length);text('diversity',gen.diversity+' UNIQUE GENOMES');
  const sourceLabel=typeof r.source==='object'?r.source.symbol+' · '+r.source.provider+' · execution liquidity assumed':(r.source||'seeded offline fixture');
- text('source-badge',modeLabel+' · '+sourceLabel);
+
  const c=state.collector;
  text('source-status',seededMode?replayLabel+' · SIMULATED · HISTORICAL PRICES · ASSUMED LIQUIDITY · NOT LIVE':state.public?'HISTORICAL ARCHIVE · NOT LIVE · NO CONTINUOUS EVOLUTION':(c.fresh?'LIVE SNAPSHOTS':'SNAPSHOTS / '+c.status.toUpperCase())+' · '+c.verified_pairs+' PAIRS'+(c.observed_at?' · '+new Date(c.observed_at*1000).toISOString():''));
  $('tokens').replaceChildren();
