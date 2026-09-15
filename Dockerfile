@@ -3,6 +3,7 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PORT=8080 FLYHIGH_ALLOWED_HOSTS=flyhigh.fun
 COPY flyhigh/ ./flyhigh/
 COPY web/ ./web/
+RUN python -c "from pathlib import Path; import shutil; out=open('web/fly-hero.mp4','wb'); [shutil.copyfileobj(p.open('rb'),out) for p in sorted(Path('web/film-source').glob('part-*'))]; out.close()"
 COPY examples/copy.report.json ./examples/copy.report.json
 COPY --chown=65534:65534 data/research.snapshot.json ./data/research.snapshot.json
 COPY --chown=65534:65534 data/wallet-seeded.report.json ./data/wallet-seeded.report.json
