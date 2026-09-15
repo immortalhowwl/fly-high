@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 import threading
 import time
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, parse_qs
 from .data import load, synthetic
 from .engine import evolve
 
@@ -159,6 +159,13 @@ def make_server(port=8765, report=None, directory=None, public=False):
                     self.send(404, {'status': 'unknown_wallet', 'takeaway': None})
                 except (OSError, ValueError, TypeError):
                     self.send(503, {'status': 'unavailable', 'takeaway': None})
+            elif path=='/api/observations':
+                try:
+                    from .research import load_snapshot
+                    from .observations import build_observations
+                    self.send(200, build_observations(load_snapshot()))
+                except (OSError, ValueError, TypeError, KeyError):
+                    self.send(503, {'status':'unavailable', 'error':'Observation source is unavailable'})
             elif path=='/api/research':
                 try:
                     from .research import load_snapshot
@@ -199,8 +206,10 @@ def make_server(port=8765, report=None, directory=None, public=False):
                             if not chunk: break
                             self.wfile.write(chunk); remaining-=len(chunk)
                     except (BrokenPipeError,ConnectionResetError): pass
-            elif path in ('/','/research','/app.js','/motion.js','/playback.js','/code-background.js','/brand.css','/favicon-16-v2.png','/favicon-32-v2.png','/favicon-fly-16-v3.png','/favicon-fly-32-v3.png','/favicon-fly-v3.ico','/favicon.ico','/fly-icon.png','/apple-touch-icon.png','/hero.js','/hero.css','/fly-hero.jpg','/style.css','/research.js','/research.css'):
+            elif path in ('/','/observation.js','/observation.css','/research','/app.js','/motion.js','/playback.js','/code-background.js','/brand.css','/favicon-16-v2.png','/favicon-32-v2.png','/favicon-fly-16-v3.png','/favicon-fly-32-v3.png','/favicon-fly-v3.ico','/favicon.ico','/fly-icon.png','/apple-touch-icon.png','/hero.js','/hero.css','/fly-hero.jpg','/style.css','/research.js','/research.css'):
                 name={'/':'index.html','/research':'research.html'}.get(path,path[1:])
+                if path=='/' and parse_qs(urlsplit(self.path).query).get('replay', [''])[0] not in ('hypothesis','wallet','archive'):
+                    name='observation.html'
                 types={'.png':'image/png','.ico':'image/x-icon','.jpg':'image/jpeg','.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8'}
                 self.send(200,(WEB/name).read_bytes(),types[Path(name).suffix])
             else: self.send(404,{'error':'not found'})
