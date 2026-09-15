@@ -1,0 +1,3 @@
+'use strict';
+const {test}=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');
+test('hero has six selectable SVG concept panels and a noninteractive loop',()=>{const h=fs.readFileSync('web/index.html','utf8'),c=fs.readFileSync('web/hero.css','utf8');assert.equal((h.match(/class="fly-hud /g)||[]).length,6);for(const name of ['GENOME','SELECTION','MUTATION','EXTINCTION','LINEAGE','HOLDOUT'])assert.ok(h.includes(name));assert.ok(c.includes('user-select:text')||c.includes('user-select: text'));assert.match(c,/prefers-reduced-motion/);assert.match(h,/<video[^>]*autoplay[^>]*muted[^>]*loop/);assert.doesNotMatch(h,/<video[^>]*\scontrols(?:\s|=|>)/);});
