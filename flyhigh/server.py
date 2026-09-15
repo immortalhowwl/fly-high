@@ -185,7 +185,7 @@ def make_server(port=8765, report=None, directory=None, public=False):
                             if not chunk: break
                             self.wfile.write(chunk); remaining-=len(chunk)
                     except (BrokenPipeError,ConnectionResetError): pass
-            elif path in ('/','/research','/app.js','/motion.js','/playback.js','/code-background.js','/brand.css','/favicon.ico','/fly-icon.png','/apple-touch-icon.png','/hero.js','/hero.css','/fly-hero.jpg','/style.css','/research.js','/research.css'):
+            elif path in ('/','/research','/app.js','/motion.js','/playback.js','/code-background.js','/brand.css','/favicon-16-v2.png','/favicon-32-v2.png','/favicon.ico','/fly-icon.png','/apple-touch-icon.png','/hero.js','/hero.css','/fly-hero.jpg','/style.css','/research.js','/research.css'):
                 name={'/':'index.html','/research':'research.html'}.get(path,path[1:])
                 types={'.png':'image/png','.ico':'image/x-icon','.jpg':'image/jpeg','.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8'}
                 self.send(200,(WEB/name).read_bytes(),types[Path(name).suffix])
