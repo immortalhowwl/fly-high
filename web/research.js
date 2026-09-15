@@ -204,11 +204,17 @@
     const wallets = behaviorReport.wallets.filter(w => w?.wallet === state.id);
     if (!wallets.length) box.append(el('p', 'No admitted behavior observations for this wallet in the cached sample.'));
     wallets.forEach(w => {
-      box.append(el('p', 'Observed buys: ' + text(w.buy_count) + ' · sells: ' + text(w.sell_count) + ' · source: ' + text(w.source) + ' · chain: ' + text(w.chain_id)),
+      box.append(el('p', 'In the loaded sample: ' + text(w.buy_count) + ' buys · ' + text(w.sell_count) + ' sells.'),
+        el('p', 'Typical trade size: ' + money(w.order_size_usd?.median) + ' — median, estimated by the source.'));
+      if (w.sell_count === 0) box.append(el('p', 'No sells in this sample. This does not mean the wallet has never sold.'));
+      const details = el('details');
+      details.append(el('summary', 'Details · source data and calculations'));
+      details.append(el('p', 'Observed buys: ' + text(w.buy_count) + ' · sells: ' + text(w.sell_count) + ' · source: ' + text(w.source) + ' · chain: ' + text(w.chain_id)),
         el('p', 'Median event cadence: ' + text(w.cadence?.median) + ' seconds. Not holding duration or decision frequency.'),
         el('p', 'Median source-estimated order size: ' + money(w.order_size_usd?.median) + ' · priced sample: ' + text(w.order_size_usd?.sample_count) + ' · missing/invalid: ' + text(w.order_size_usd?.missing_or_invalid_count)),
         el('p', 'Observed event IDs: ' + (w.event_ids || []).join(', ')),
         el('pre', text({window: w.window, attribution: w.attribution, buy_token_concentration: w.buy_token_concentration})));
+      box.append(details);
     });
     const candidates = behaviorReport.candidates.filter(c => c?.provenance?.wallet === state.id && c.execution === 'not_run');
     if (wallets.length && !candidates.length) box.append(el('p', 'Features only: no candidate passed the three priced buys per token experiment gate.'));
