@@ -43,9 +43,19 @@ test('every wallet opens a safe, prominent takeaway before fills, independent of
  for(const id of ['test-wallet','empty','missing']){
   a.go(ui.route('wallets','wallet',id));
   const children=a.nodes.dossier.children, i=children.findIndex(n=>n.className==='trader-takeaway');
-  assert.ok(i>=0);assert.equal(children[i].tagName,'section');assert.match(children[i].textContent,/Trader takeawayObserved:/);assert.match(children[i].textContent,/Not Financial Advice\.$/);
+  assert.ok(i>=0);assert.equal(children[i].tagName,'section');assert.match(children[i].textContent,/Trader takeaway.*Observed:/);assert.match(children[i].textContent,/Not Financial Advice\.$/);
   assert.ok(i<children.findIndex(n=>n.textContent.startsWith('Observed fills')));
  }
+});
+test('per-wallet history replaces fallback safely in the same top block with closed evidence',async()=>{
+ const a=visitor(); await a.settle();
+ a.window.fetch=async path=>({ok:true,json:async()=>path.startsWith('/api/wallet-history/')?{wallet:'test-wallet',chain_id:4663,takeaway:'Observed — ALPHA: 9 buys and 2 sells. Not Financial Advice.',groups:[{token:'x',symbol:'<script>ALPHA</script>',buys:9,sells:2,transactions:[]}],scope:{grouped:'historical, partial'},sources:{},native_history:[]}:null});
+ a.go(ui.route('wallets','wallet','test-wallet')); await a.settle();
+ const children=a.nodes.dossier.children, top=children.find(n=>n.className==='trader-takeaway');
+ assert.match(top.textContent,/ALPHA: 9 buys and 2 sells/);
+ assert.doesNotMatch(top.textContent,/loaded source-labeled/);
+ const details=children.find(n=>n.tagName==='details'&&n.textContent.includes('per-wallet historical'));
+ assert.ok(details); assert.notEqual(details.open,true); assert.match(details.textContent,/<script>ALPHA<\/script>/);
 });
 test('formatting preserves signs, unknown values and zero',()=>{
   assert.equal(ui.money(-10,true),'−$10.00');assert.equal(ui.money(10,true),'+$10.00');assert.equal(ui.money(0,true),'$0.00');assert.equal(ui.money(null),'—');assert.equal(ui.money('10'),'—');assert.equal(ui.money(Infinity),'—');

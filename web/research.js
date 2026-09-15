@@ -269,6 +269,46 @@
       box.append(group);
     });
   }
+  let historyGeneration = 0;
+  const histories = new Map();
+  function loadHistory(address) {
+    if (histories.has(address)) return;
+    const entry = {status: 'loading', report: null}, generation = historyGeneration;
+    histories.set(address, entry);
+    const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 15000);
+    root.fetch('/api/wallet-history/' + encodeURIComponent(address), {cache: 'no-store', signal: controller.signal})
+      .then(r => r.ok ? r.json() : null)
+      .then(r => {
+        if (generation !== historyGeneration) return;
+        entry.report = r?.wallet === address.toLowerCase() && r?.chain_id === 4663 && Array.isArray(r.groups) ? r : null;
+        entry.status = entry.report ? 'loaded' : 'unavailable';
+      }).catch(() => { entry.status = 'unavailable'; })
+      .finally(() => { clearTimeout(timer); if (generation === historyGeneration && data && state.kind === 'wallet' && state.id === address) dossier(); });
+  }
+  function historyDetails(box, report) {
+    const details = el('details');
+    details.append(el('summary', 'Details · per-wallet historical token evidence'),
+      el('p', 'Captured ' + date(report.captured_at) + (report.stale ? ' · STALE cached history' : '') + '. ' + text(report.scope?.grouped)),
+      el('p', (report.limitations || []).join(' ')));
+    Object.entries(report.sources || {}).forEach(([name, url]) => { const safe = safeURL(url); if (safe) { const a = link(name + ' history ↗', safe); a.target = '_blank'; a.rel = 'noopener noreferrer'; details.append(a); } });
+    if (report.activity) {
+      const activity = el('details'); activity.append(el('summary', 'Dated trade evidence · ' + report.activity.events.length + ' events'), el('p', text(report.activity.scope)), el('p', 'Excluded ' + report.activity.counts.excluded + ' transfer, dust or unclassified rows. Dates: ' + date(report.activity.first_ts) + ' → ' + date(report.activity.last_ts)));
+      report.activity.events.forEach(e => activity.append(el('p', date(e.ts) + ' · ' + e.side.toUpperCase() + ' · ' + e.symbol + ' · ' + money(e.usd) + ' · ' + e.token)));
+      details.append(activity);
+    }
+    report.groups.forEach(p => {
+      const row = el('details'); row.append(el('summary', p.symbol + ' · ' + p.buys + ' buys / ' + p.sells + ' sells'),
+        entity('token', p.token, 'Inspect ' + p.symbol), el('p', 'Source-grouped trades · ' + date(p.first_ts) + ' → ' + date(p.last_ts)),
+        el('p', 'Source-reported USD: bought ' + money(p.bought_usd) + ' · sold ' + money(p.sold_usd) + '. Not independently verified wallet funding.'),
+        el('p', text(p.transaction_coverage)));
+      if (!(p.transactions || []).length) row.append(el('p', 'No individual transaction hashes supplied for this historical group.'));
+      (p.transactions || []).forEach(tx => { const url = safeURL(tx.url); if (url) row.append(link(tx.side + ' · ' + tx.classification + ' · ' + short(tx.tx) + ' ↗', url)); });
+      details.append(row);
+    });
+    const native = el('details'); native.append(el('summary', 'Separate native Trenches history · ' + (report.native_history || []).length + ' rows'), el('p', text(report.scope?.native)));
+    (report.native_history || []).forEach(p => native.append(el('p', p.symbol + ': ' + p.buys + ' buys / ' + p.sells + ' sells · ' + date(p.opened_ts) + ' → ' + date(p.closed_ts))));
+    details.append(native); box.append(details);
+  }
   function dossier() {
     const box = $('dossier'); box.replaceChildren(); box.hidden = !state.kind || state.tab === 'method'; if (box.hidden) return;
     const close = el('button', '×', 'close'); close.type = 'button'; close.setAttribute('aria-label', 'Close dossier'); close.onclick = () => { root.location.hash = route(state.tab); $('research-panel').focus(); };
@@ -280,8 +320,13 @@
     if (state.kind === 'wallet') {
       const takeaway = el('section', null, 'trader-takeaway');
       takeaway.setAttribute('aria-label', 'Trader takeaway');
-      takeaway.append(el('h3', 'Trader takeaway'), el('p', traderTakeaway(record, fills, data.tokens, data.window)));
+      if (record) loadHistory(state.id);
+      const history = histories.get(state.id);
+      takeaway.append(el('h3', 'Trader takeaway'));
+      takeaway.append(el('small', history?.report ? (history.report.activity ? 'Per-wallet dated trades · source-reported' : 'Per-wallet historical groups · source-reported') + (history.report.stale ? ' · STALE cache' : '') : history?.status === 'loading' ? 'Loading per-wallet history… Current sample shown meanwhile.' : 'Per-wallet history unavailable; current sample shown.'));
+      takeaway.append(el('p', history?.report?.takeaway || traderTakeaway(record, fills, data.tokens, data.window)));
       box.append(takeaway);
+      if (history?.report) historyDetails(box, history.report);
     }
     if (record && state.kind === 'wallet') {
       const stats = el('div', null, 'stats'); stats.append(stat('Realized', money(record.realized_pnl, true), signed(record.realized_pnl)), stat('Unrealized', money(record.unrealized_pnl, true), signed(record.unrealized_pnl)), stat('Net PnL', money(record.net_pnl, true), signed(record.net_pnl)), stat('Loaded fills', fills.length)); box.append(stats);
@@ -331,6 +376,7 @@
     if (state.tab === 'method') method(); else renderList(); dossier();
   }
   async function load() {
+    if (!loading) { historyGeneration++; histories.clear(); }
     if (loading) return; loading = true; $('refresh').disabled = true; $('research-panel').setAttribute('aria-busy', 'true'); showStatus(data ? 'Refreshing… Previous snapshot remains visible.' : 'Loading research snapshot…');
     const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 20000);
     // Independent optional request: failure must never prevent research rendering.

@@ -54,6 +54,8 @@ def make_server(port=8765, report=None, directory=None, public=False):
     railway=os.environ.get('RAILWAY_PUBLIC_DOMAIN','').strip()
     if railway: hosts.add(railway)
     lab=Lab(report or evolve(synthetic()),directory or ROOT/'data')
+    from .wallet_history import WalletHistory
+    wallet_history = WalletHistory()
     class Handler(BaseHTTPRequestHandler):
         timeout=10
         def log_message(self,*args): pass
@@ -149,6 +151,14 @@ def make_server(port=8765, report=None, directory=None, public=False):
             elif path=='/api/report': self.send(200,lab.report)
             elif path=='/api/events': self.send(200,lab.report['events'])
             elif path=='/healthz': self.send(200,{'status':'ok'})
+            elif path.startswith('/api/wallet-history/'):
+                try:
+                    from .research import load_snapshot
+                    self.send(200, wallet_history.get(path.removeprefix('/api/wallet-history/'), load_snapshot()))
+                except KeyError:
+                    self.send(404, {'status': 'unknown_wallet', 'takeaway': None})
+                except (OSError, ValueError, TypeError):
+                    self.send(503, {'status': 'unavailable', 'takeaway': None})
             elif path=='/api/research':
                 try:
                     from .research import load_snapshot
