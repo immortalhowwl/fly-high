@@ -62,16 +62,19 @@ def make_server(port=8765, report=None, directory=None, public=False):
             self.send_response(status)
             self.send_header('Content-Type',ctype)
             self.send_header('Content-Length',str(len(body)))
-            self.send_header('Cache-Control','no-store')
+            self.send_header('Cache-Control', 'public, max-age=86400' if ctype in ('image/png','image/x-icon') else 'no-store')
             self.send_header('X-Content-Type-Options','nosniff')
             self.send_header('Referrer-Policy','same-origin')
             self.send_header('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'")
-            self.end_headers(); self.wfile.write(body)
+            self.end_headers()
+            if self.command != 'HEAD': self.wfile.write(body)
         def allowed(self):
             host=self.headers.get('Host','')
             if len(self.headers.get_all('Host',[])) != 1: return False
             if public: return host in hosts
             return host in (f'127.0.0.1:{self.server.server_port}',f'localhost:{self.server.server_port}')
+        def do_HEAD(self):
+            self.do_GET()
         def do_GET(self):
             if not self.allowed(): self.send(403,{'error':'allowed Host required'}); return
             path=urlsplit(self.path).path
@@ -176,6 +179,7 @@ def make_server(port=8765, report=None, directory=None, public=False):
                 self.send_header('Content-Length',str(end-start+1))
                 if requested: self.send_header('Content-Range',f'bytes {start}-{end}/{size}')
                 self.end_headers()
+                if self.command == 'HEAD': return
                 with asset.open('rb') as stream:
                     stream.seek(start)
                     remaining=end-start+1
