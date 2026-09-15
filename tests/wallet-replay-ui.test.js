@@ -42,7 +42,7 @@ test('completed wallet mode uses supplied replay and shows founder and descendan
  const birth=report.events.find(e=>e.kind==='birth'&&e.fly===founder.id);birth.seed_origin=founder.seed_origin;
  const a=visitor({status:'completed',seed_count:1,replay:report,limits:['Allocation only']});await settle();
  assert.deepEqual(a.calls,['/api/wallet-replay']);assert.equal(a.probe().flies,24);assert.match(a.nodes.mode.textContent,/WALLET-SEEDED/);
- assert.match(a.nodes.lineage.textContent,/wallet-a/);assert.match(a.nodes['raw-evidence'].textContent,/sample_count/);assert.equal(a.nodes['source-status'].textContent,'Historical prices · assumed liquidity');assert.match(a.nodes['replay-details'].textContent,/Simulation, not wallet execution/);
+ assert.match(a.nodes.lineage.textContent,/wallet-a/);assert.ok(a.nodes['raw-evidence'].children.some(n=>n.textContent==='All simulated trades so far'));assert.equal(a.nodes['source-status'].textContent,'Historical prices · assumed liquidity');assert.match(a.nodes['replay-details'].textContent,/Simulation, not wallet execution/);
  const description=vm.runInContext('lineageText({id:"child",parents:["'+founder.id+'"],mutations:[]},state.report)',a.context);
  assert.match(description,/DERIVED DESCENDANT/);assert.match(description,/wallet-a/);assert.match(description,/not observed wallet/);
 });

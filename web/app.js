@@ -89,7 +89,7 @@ function inspect(){
  const f=flies.find(x=>x.id===selected);if(!f)return;const d=f.result.decisions[bar],curve=f.result.curve.slice(0,bar+1);
  text('fly-title',f.id);text('fly-meta','BORN GEN '+f.born+' · '+(curve.at(-1).holding?'HOLDING SIMULATED POSITION':'WATCHING / FLAT'));
  text('equity','$'+number(d.equity));let peak=1000,dd=0;for(const p of curve){peak=Math.max(peak,p.equity);dd=Math.max(dd,(peak-p.equity)/peak);}text('drawdown',number(dd*100)+'%');
- $('genome').replaceChildren();for(const [k,v] of Object.entries(f.genome))$('genome').append(element('dt',k.replaceAll('_',' ').toUpperCase()),element('dd',Number.isInteger(v)?v:number(v,4)));
+ $('genome').replaceChildren();for(const [k,v] of Object.entries(f.genome)){const description=mutationText({gene:k,before:v,after:v});const label=description.split(': ')[0],value=description.split(': ')[1].split(' → ')[0];$('genome').append(element('dt',label),element('dd',value));}
  text('lineage',lineageText(f,state.report));
  for(const parent of f.parents||[]){
   const target=state.report.generations.findIndex(g=>g.flies.some(x=>x.id===parent));
@@ -101,7 +101,16 @@ function inspect(){
  for(const trade of visibleTrades.slice(-5))$('trades').append(element('p',(trade.side||trade.action||'fill').toUpperCase()+' · '+(trade.price!=null?'$'+number(trade.price,8)+' · ':'')+new Date(trade.timestamp*1000).toISOString()));
  if(!visibleTrades.length)$('trades').append(element('p','No simulated trades yet.'));
  else $('trades').append(element('small',visibleTrades.length+' simulated fills so far. Latest five shown; full list in Details.'));
- text('raw-evidence',JSON.stringify({origin:f.seed_origin||null,parents:f.parents,mutations:f.mutations,as_of:d.timestamp,equity:d.equity,trades:visibleTrades,cancelled_orders:f.result.decisions.slice(0,bar+1).filter(x=>x.action==='cancel'),...(bar===state.report.split-1?{final_return:f.result.return,drawdown:f.result.drawdown,fees:f.result.fees,fitness:f.result.fitness,mark_note:f.result.mark_note}: {})},null,2));
+ $('raw-evidence').replaceChildren(element('h4','All simulated trades so far'));
+ if(!visibleTrades.length)$('raw-evidence').append(element('p','No simulated trades yet.'));
+ for(const trade of visibleTrades){
+  const row=element('p',(trade.side||trade.action||'fill').toUpperCase()+' · '+new Date(trade.timestamp*1000).toLocaleString('en-GB',{timeZone:'UTC'})+' UTC');
+  row.append(element('br'),element('span','Price: $'+number(trade.price,8)+(trade.quantity!=null?' · Quantity: '+number(trade.quantity,4):'')+(trade.fee!=null?' · Fee: $'+number(trade.fee):'')));
+  $('raw-evidence').append(row);
+ }
+ const cancelled=f.result.decisions.slice(0,bar+1).filter(x=>x.action==='cancel');
+ if(cancelled.length){$('raw-evidence').append(element('h4','Orders that did not execute'));for(const order of cancelled)$('raw-evidence').append(element('p',new Date(order.timestamp*1000).toLocaleString('en-GB',{timeZone:'UTC'})+' UTC · '+order.reason));}
+ if(bar===state.report.split-1)$('raw-evidence').append(element('h4','Generation result · simulated'),element('p','Return: '+number(f.result.return*100)+'% · Maximum drawdown: '+number(f.result.drawdown*100)+'% · Fees: $'+number(f.result.fees)),element('p',f.result.mark_note||''));
  text('decision',d.action.toUpperCase()+' · '+d.reason+(d.pending?' → '+d.pending.toUpperCase()+' QUEUED FOR NEXT OBSERVATION':''));
  const c=$('curve'),x=c.getContext('2d');c.width=c.clientWidth*2;c.height=116;x.clearRect(0,0,c.width,c.height);const low=Math.min(995,...curve.map(p=>p.equity)),high=Math.max(1005,...curve.map(p=>p.equity));x.beginPath();curve.forEach((p,i)=>{const px=i/Math.max(1,state.report.split-1)*c.width,py=105-(p.equity-low)/(high-low)*94;i?x.lineTo(px,py):x.moveTo(px,py);});x.strokeStyle='#00ff85';x.lineWidth=2;x.stroke();
 }
