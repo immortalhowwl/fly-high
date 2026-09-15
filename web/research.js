@@ -52,6 +52,42 @@
     const ids = new Set(fills.map(f => String(f.id)));
     return (Array.isArray(wallet.observed_rules) ? wallet.observed_rules : []).filter(rule => rule && typeof rule === 'object' && typeof rule.description === 'string' && Array.isArray(rule.fill_ids) && rule.fill_ids.length && rule.fill_ids.every(id => ids.has(String(id))));
   }
+  // Descriptive only: selected /api/research rows, never inferred inventory or replay output.
+  function traderTakeaway(wallet = {}, fills = [], tokens = [], window = 'reported window') {
+    const count = (n, word) => n + ' ' + word + (n === 1 ? '' : 's');
+    if (!fills.length) {
+      const known = n => Number.isInteger(n) && n >= 0;
+      const summary = known(wallet?.buys) && known(wallet?.sells)
+        ? ' The source summary reports ' + count(wallet.buys, 'buy') + ' and ' + count(wallet.sells, 'sell') + ' for ' + text(window) + '; these are not loaded fill counts.' : ' No usable buy/sell totals are supplied either.';
+      return 'Observed: No wallet fills are loaded in this bounded tape.' + summary + ' Token concentration and typical estimated size cannot be checked here. Interpretation: this is a coverage gap, not evidence of inactivity or a holding strategy. Study: obtain this wallet’s dated fills and reconcile them with the summary before comparing repeated entries, sale activity or order sizes. Summary PnL alone cannot explain how a result was achieved. Not Financial Advice.';
+    }
+    const nonTrades = fills.filter(f => f.priced === 'no_cash_leg' || (Array.isArray(f.flags) && f.flags.some(flag => /not a real (buy|sell)|airdrop|transferred/i.test(String(flag)))));
+    if (nonTrades.length) {
+      const valid = fills.filter(f => !nonTrades.includes(f)), b = valid.filter(f => f.side === 'buy'), s = valid.filter(f => f.side === 'sell');
+      const names = [...new Set(nonTrades.map(f => f.symbol).filter(x => typeof x === 'string'))].slice(0, 3).map(x => x.slice(0, 24)).join(', ');
+      const observation = 'Observed: ' + fills.length + ' source rows are loaded. ' + nonTrades.length + ' are marked as airdrops/transfers or have no cash leg' + (names ? ' (' + names + ')' : '') + '; their USD estimates are not confirmed spending. ';
+      const remainder = valid.length ? 'Excluding those leaves ' + count(b.length, 'buy') + ' and ' + count(s.length, 'sell') + ' labeled by the source. ' : 'None of the loaded rows establishes a cash-funded trade. ';
+      const meaning = valid.length ? 'Interpretation: separate these remaining events from incoming token distributions; mixing them would distort entry counts and trade size. ' : 'Interpretation: repeated incoming tokens here are not evidence of repeated buying or conviction. This sample cannot explain the wallet’s trading approach. ';
+      return observation + remainder + meaning + 'Study: verify the cash leg and token sellability, then match genuine buys to later sales. Do not use marked token values as invested capital or a model position size. Not Financial Advice.';
+    }
+    const buys = fills.filter(f => f.side === 'buy'), sells = fills.filter(f => f.side === 'sell');
+    const unknown = fills.length - buys.length - sells.length;
+    const priced = fills.map(f => number(f.usd)).filter(n => n !== null && n >= 0).sort((a,b) => a-b);
+    const mid = Math.floor(priced.length / 2), median = priced.length % 2 ? priced[mid] : priced[mid-1] / 2 + priced[mid] / 2;
+    const counts = new Map();
+    buys.forEach(f => { if (typeof f.token === 'string' && f.token) counts.set(f.token, (counts.get(f.token) || 0) + 1); });
+    const ranked = [...counts].sort((a,b) => b[1]-a[1] || a[0].localeCompare(b[0]));
+    const top = ranked[0], identified = [...counts.values()].reduce((a,b) => a+b, 0);
+    const rawLabel = top && (tokens.find(t => (t.token || t.address) === top[0])?.symbol || buys.find(f => f.token === top[0])?.symbol || short(top[0]));
+    const label = typeof rawLabel === 'string' ? rawLabel.slice(0, 32) : top ? short(top[0]) : '';
+    const concentration = top ? label + ' accounts for ' + top[1] + ' of ' + buys.length + ' buys (' + Math.round(top[1] / buys.length * 100) + '% by count, not capital).' + (identified < buys.length ? ' Some token IDs are missing.' : '') : 'Token concentration is unavailable without identified buys.';
+    const size = priced.length ? 'Median source-estimated size is ' + money(median) + ' across ' + priced.length + ' of ' + fills.length + ' fills' + (priced.length > 1 ? ', ranging from ' + money(priced[0]) + ' to ' + money(priced[priced.length - 1]) : '') + '; this is not portfolio sizing.' : 'No usable USD estimates are loaded; trade size cannot be compared.';
+    const interpretation = fills.length === 1 ? 'One fill cannot establish a pattern.' : top?.[1] > 1 ? 'Repeated buy labels suggest recurring activity in ' + label + ', not a proven entry rule.' : 'These rows show activity, not a repeatable strategy.';
+    const activity = sells.length === 0 ? 'No sells appear in this sample; that does not prove holding.' : buys.length === 0 ? 'Sales without loaded buys cannot establish entry cost or profit.' : 'Both sides appear, but a sell does not prove a full exit or profit.';
+    const study = top?.[1] > 1 ? 'compare the repeated buys’ timestamps and sizes, then check later sales in the same token; do not copy the size.' : buys.length && sells.length ? 'match buys and sells by token and time before testing any entry/exit hypothesis.' : buys.length ? 'look for further buys of the same token and dated sales before testing a repeat-entry hypothesis.' : sells.length ? 'trace the sales back to earlier purchases before studying exit timing.' : 'verify the unclassified events’ sides and token IDs before comparing entries or sales.';
+    const flagged = fills.some(f => Array.isArray(f.flags) && f.flags.length);
+    return 'Observed: ' + fills.length + ' loaded source-labeled fills: ' + count(buys.length, 'buy') + ' and ' + count(sells.length, 'sell') + (unknown ? '; ' + unknown + ' unclassified' : '') + '. ' + concentration + ' ' + size + (flagged ? ' Source flags require checking; labels may not be real trades.' : '') + ' Interpretation: ' + interpretation + ' ' + activity + ' Study: ' + study + ' Not Financial Advice.';
+  }
   function safeURL(value) {
     try { const url = new URL(value); return url.protocol === 'https:' && !url.username && !url.password ? url.href : null; } catch (_) { return null; }
   }
@@ -76,7 +112,7 @@
     if(envelope?.evaluation_kind !== 'retrospective')return null;
     return walletReplayLink(envelope,wallet)?.replace('replay=wallet','replay=hypothesis') || null;
   }
-  const api = {candleSegments, priceUSD, walletReplayLink, hypothesisReplayLink, money, epoch, date, freshness, parseHash, route, normalize, rowsFor, matchingFills, supportedRules, safeURL, candlesOf};
+  const api = {traderTakeaway, candleSegments, priceUSD, walletReplayLink, hypothesisReplayLink, money, epoch, date, freshness, parseHash, route, normalize, rowsFor, matchingFills, supportedRules, safeURL, candlesOf};
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (!root.document) return;
   const doc = root.document, $ = id => doc.getElementById(id);
@@ -241,6 +277,12 @@
     box.append(el('h2', record?.handle || record?.symbol || record?.name || short(state.id)), el('div', state.id, 'address'));
     if (!record) box.append(el('p', 'No summary row for this address in the snapshot. Related observed fills, if any, remain available below.'));
     const fills = matchingFills(data, state.kind, state.id);
+    if (state.kind === 'wallet') {
+      const takeaway = el('section', null, 'trader-takeaway');
+      takeaway.setAttribute('aria-label', 'Trader takeaway');
+      takeaway.append(el('h3', 'Trader takeaway'), el('p', traderTakeaway(record, fills, data.tokens, data.window)));
+      box.append(takeaway);
+    }
     if (record && state.kind === 'wallet') {
       const stats = el('div', null, 'stats'); stats.append(stat('Realized', money(record.realized_pnl, true), signed(record.realized_pnl)), stat('Unrealized', money(record.unrealized_pnl, true), signed(record.unrealized_pnl)), stat('Net PnL', money(record.net_pnl, true), signed(record.net_pnl)), stat('Loaded fills', fills.length)); box.append(stats);
     }

@@ -1,0 +1,4 @@
+'use strict';
+const {test}=require('node:test'),assert=require('node:assert/strict'),{traderTakeaway}=require('../web/research.js');
+test('airdrops and missing cash legs never become a repeat-buy strategy or invested dollars',()=>{const s=traderTakeaway({},[{side:'buy',symbol:'DOGEGPT',usd:50000,priced:'no_cash_leg',flags:['not a real buy (airdropped)']},{side:'buy',symbol:'DOGEGPT',usd:60000,priced:'no_cash_leg'}],[]);assert.match(s,/None of the loaded rows establishes a cash-funded trade/);assert.match(s,/not evidence of repeated buying/);assert.doesNotMatch(s,/Median|\$50,000|suggest recurring/);});
+test('mixed samples distinguish remaining source trades from marked transfers',()=>{const s=traderTakeaway({},[{side:'buy',flags:['not a real buy (transferred)']},{side:'buy',priced:'cash_leg'},{side:'sell',priced:'cash_leg'}],[]);assert.match(s,/Excluding those leaves 1 buy and 1 sell/);assert.match(s,/Not Financial Advice\.$/);});

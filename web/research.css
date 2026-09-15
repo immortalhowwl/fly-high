@@ -6,3 +6,6 @@ body{isolation:isolate}
 @media(prefers-reduced-motion:reduce){#code-background{opacity:.14}}
 
 .list-pane,.counts,.tabs,#research-panel>article{background:#000}
+.trader-takeaway{margin:22px 0;padding:16px 18px;border:1px solid var(--line);border-left:3px solid var(--lime);background:var(--panel);overflow-wrap:anywhere}
+#dossier .trader-takeaway h3{margin:0 0 10px;color:var(--lime);font-size:16px}
+#dossier .trader-takeaway p{margin:0;color:var(--text);font:15px/1.7 Arial,Helvetica,sans-serif}

@@ -23,6 +23,30 @@ function visitor(responseData = fixture(), ok = true) {
   vm.runInContext(fs.readFileSync(require.resolve('../web/research.js'),'utf8'),context);
   return {nodes,tabs,calls,window,go(hash){window.location.hash=hash;listeners.hashchange();},settle:()=>new Promise(r=>setImmediate(r)),document,listeners};
 }
+test('takeaway derives buy/sell counts, concentration and median only from selected fills',()=>{
+ const rows=[{side:'buy',token:'a',usd:10},{side:'buy',token:'a',usd:30},{side:'buy',token:'b',usd:null},{side:'sell',token:'b',usd:20}];
+ const s=ui.traderTakeaway({buys:999,net_pnl:999999},rows,[{token:'a',symbol:'ALPHA'}],'7d');
+ assert.match(s,/3 buys and 1 sell/);assert.match(s,/ALPHA accounts for 2 of 3 buys \(67%/);assert.match(s,/\$20.00 across 3 of 4/);
+ assert.match(s,/Interpretation:/);assert.match(s,/Study:/);assert.match(s,/Not Financial Advice\.$/);assert.ok(s.length>=500 && s.length<=800,s.length);assert.doesNotMatch(s,/999/);
+});
+test('takeaway handles sparse, absent and invalid data without inventing positions or intent',()=>{
+ const single=ui.traderTakeaway({},[{side:'buy',token:'a',usd:12}],[],'7d');
+ assert.match(single,/One fill cannot establish a pattern/);assert.match(single,/No sells appear in this sample/);
+ const absent=ui.traderTakeaway({buys:28,sells:0},[],[],'7d');
+ assert.match(absent,/source summary reports 28 buys and 0 sells/);assert.match(absent,/No wallet fills are loaded/);assert.match(absent,/reconcile/);
+ const unknown=ui.traderTakeaway({},[{side:'unknown',usd:-4},{side:'buy',usd:'10'},{side:'sell',usd:Infinity}],[]);
+ assert.match(unknown,/1 unclassified/);assert.match(unknown,/Token concentration is unavailable/);assert.match(unknown,/No usable USD estimates/);assert.doesNotMatch(unknown,/\$0.00|NaN|Infinity/);
+ assert.match(ui.traderTakeaway({},[],[]),/Not Financial Advice\.$/);
+});
+test('every wallet opens a safe, prominent takeaway before fills, independent of optional evidence',async()=>{
+ const f=fixture();f.wallets.push({address:'empty',buys:28,sells:0});const a=visitor(f);await a.settle();
+ for(const id of ['test-wallet','empty','missing']){
+  a.go(ui.route('wallets','wallet',id));
+  const children=a.nodes.dossier.children, i=children.findIndex(n=>n.className==='trader-takeaway');
+  assert.ok(i>=0);assert.equal(children[i].tagName,'section');assert.match(children[i].textContent,/Trader takeawayObserved:/);assert.match(children[i].textContent,/Not Financial Advice\.$/);
+  assert.ok(i<children.findIndex(n=>n.textContent.startsWith('Observed fills')));
+ }
+});
 test('formatting preserves signs, unknown values and zero',()=>{
   assert.equal(ui.money(-10,true),'−$10.00');assert.equal(ui.money(10,true),'+$10.00');assert.equal(ui.money(0,true),'$0.00');assert.equal(ui.money(null),'—');assert.equal(ui.money('10'),'—');assert.equal(ui.money(Infinity),'—');
 });
