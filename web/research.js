@@ -88,6 +88,11 @@
     const flagged = fills.some(f => Array.isArray(f.flags) && f.flags.length);
     return 'Observed: ' + fills.length + ' loaded source-labeled fills: ' + count(buys.length, 'buy') + ' and ' + count(sells.length, 'sell') + (unknown ? '; ' + unknown + ' unclassified' : '') + '. ' + concentration + ' ' + size + (flagged ? ' Source flags require checking; labels may not be real trades.' : '') + ' Interpretation: ' + interpretation + ' ' + activity + ' Study: ' + study + ' Not Financial Advice.';
   }
+  // Remove only template signposts at sentence boundaries, never evidence or qualifiers.
+  function readableTakeaway(value) {
+    return String(value).replace(/(^|[.!?]\s+|\n\s*)(Observed|Interpretation|Study)\s*(?::|—|–)\s*/g,
+      (_, boundary, label) => boundary + (label === 'Study' ? 'To explore this, ' : ''));
+  }
   function safeURL(value) {
     try { const url = new URL(value); return url.protocol === 'https:' && !url.username && !url.password ? url.href : null; } catch (_) { return null; }
   }
@@ -112,7 +117,7 @@
     if(envelope?.evaluation_kind !== 'retrospective')return null;
     return walletReplayLink(envelope,wallet)?.replace('replay=wallet','replay=hypothesis') || null;
   }
-  const api = {traderTakeaway, candleSegments, priceUSD, walletReplayLink, hypothesisReplayLink, money, epoch, date, freshness, parseHash, route, normalize, rowsFor, matchingFills, supportedRules, safeURL, candlesOf};
+  const api = {readableTakeaway, traderTakeaway, candleSegments, priceUSD, walletReplayLink, hypothesisReplayLink, money, epoch, date, freshness, parseHash, route, normalize, rowsFor, matchingFills, supportedRules, safeURL, candlesOf};
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (!root.document) return;
   const doc = root.document, $ = id => doc.getElementById(id);
@@ -177,7 +182,7 @@
     if (!fills.length) box.append(el('p', 'No fills for this selection in the loaded sample. This does not prove inactivity.'));
     // Every selected fill is accessible; disclosure groups keep large dossiers usable.
     for (let start = 0; start < fills.length; start += 25) {
-      const group = el('details'); group.open = start === 0;
+      const group = el('details');
       group.append(el('summary', 'Rows ' + (start + 1) + '–' + Math.min(start + 25, fills.length)));
       fills.slice(start, start + 25).forEach(fill => {
         const row = el('div', null, 'detail-fill'); row.append(el('span', text(fill.side).toUpperCase() + ' ' + money(fill.usd) + ' · ', fill.side === 'sell' ? 'negative' : ''), entity('token', fill.token, fill.symbol || short(fill.token)), el('span', ' / '), entity('wallet', fill.wallet, data.wallets.find(w => w.address === fill.wallet)?.handle || short(fill.wallet)), el('span', date(fill.ts), 'secondary'), el('span', 'Fill ' + text(fill.id), 'secondary'), el('span', 'Tx: ' + text(fill.tx), 'secondary')); group.append(row);
@@ -324,7 +329,7 @@
       const history = histories.get(state.id);
       takeaway.append(el('h3', 'Trader takeaway'));
       takeaway.append(el('small', history?.report ? (history.report.activity ? 'Per-wallet dated trades · source-reported' : 'Per-wallet historical groups · source-reported') + (history.report.stale ? ' · STALE cache' : '') : history?.status === 'loading' ? 'Loading per-wallet history… Current sample shown meanwhile.' : 'Per-wallet history unavailable; current sample shown.'));
-      takeaway.append(el('p', history?.report?.takeaway || traderTakeaway(record, fills, data.tokens, data.window)));
+      takeaway.append(el('p', readableTakeaway(history?.report?.takeaway || traderTakeaway(record, fills, data.tokens, data.window))));
       box.append(takeaway);
       if (history?.report) historyDetails(box, history.report);
     }
@@ -339,16 +344,17 @@
     }
     detailFills(box, fills);
     if (state.kind === 'wallet') {
-      box.append(el('h3', 'Rule evidence'));
+      const rulesDetails = el('details'); rulesDetails.append(el('summary', 'Details · supported rules'));
       const rules = record ? supportedRules(record, fills) : [];
-      if (!rules.length) box.append(el('p', 'Insufficient validated history to describe this wallet’s strategy. Loaded fills do not establish position sizing, inventory, intent or a repeatable rule.'));
-      rules.forEach(rule => { box.append(el('p', rule.description), el('span', 'Supporting fill IDs: ' + rule.fill_ids.join(', '), 'secondary')); });
+      if (!rules.length) rulesDetails.append(el('p', 'Insufficient validated history to describe this wallet’s strategy. Loaded fills do not establish position sizing, inventory, intent or a repeatable rule.'));
+      rules.forEach(rule => { rulesDetails.append(el('p', rule.description), el('span', 'Supporting fill IDs: ' + rule.fill_ids.join(', '), 'secondary')); });
+      box.append(rulesDetails);
     }
     const replayLink = state.kind === 'wallet' ? walletReplayLink(replayEnvelope, state.id) : null;
     const hypothesisLink = state.kind === 'wallet' ? hypothesisReplayLink(hypothesisEnvelope,state.id) : null;
     if (state.kind === 'wallet') {
-      box.append(el('h3', 'Wallet → experiment'));
-      behaviorEvidence(box);
+      const experiment = el('details'); experiment.append(el('summary', 'Details · wallet → experiment'));
+      behaviorEvidence(experiment);
       const mappings = (replayEnvelope?.mappings || []).filter(m => m.provenance?.wallet === state.id);
       const admission = el('details'); admission.append(el('summary', 'Details · strict replay admission'));
       admission.append(el('p', replayLink ? 'Admitted founder exists in this completed simulation. Partial mapping, not recovered wallet strategy.' : 'No exact wallet-to-fly mapping established for this wallet. No admitted replay founder. ' + (replayEnvelope?.blocked_reasons || ['Wallet replay unavailable or wallet not admitted.']).join(' ')));
@@ -358,16 +364,16 @@
         const founder = replayEnvelope.replay.generations[0].flies.find(f => f.seed_origin?.provenance?.wallet === state.id);
         evidence.append(el('pre', text(founder.seed_origin.provenance)));
       }
-      admission.append(evidence); box.append(admission);
+      admission.append(evidence); experiment.append(admission); box.append(experiment);
     }
-    box.append(el('h3', 'Watch the experiment'));
+    if (replayLink || hypothesisLink) box.append(el('h3', 'Watch the experiment'));
     if (replayLink) box.append(link('Open strict wallet replay ↗', replayLink, 'colony'));
     if(hypothesisLink){
       const founder=hypothesisEnvelope.replay.generations[0].flies.find(f=>f.seed_origin?.provenance?.wallet===state.id);
       const details=el('details'); details.append(el('summary','Details · experiment evidence'),el('p',text(hypothesisEnvelope.overlap_note||hypothesisEnvelope.overlap||hypothesisEnvelope.temporal_overlap||'')),el('pre',text(founder.seed_origin)));
-      box.append(el('p','Historical simulation · exits assumed · not forward validation.'),link('Watch this wallet’s experiment → fly, changes and trades ↗',hypothesisLink,'colony'),details);
+      box.append(el('p','Historical simulation · exits assumed · not forward validation.'),link('Watch wallet experiment ↗',hypothesisLink,'colony'),details);
     }
-    box.append(el('p', 'Original archive is separate and does not represent this wallet.'), link('Original archive ↗', '/?replay=archive', 'secondary'));
+    const archive = el('details'); archive.append(el('summary', 'Details · original archive'), el('p', 'Original archive is separate and does not represent this wallet.'), link('Original archive ↗', '/?replay=archive', 'secondary')); box.append(archive);
   }
   function render() {
     doc.querySelectorAll('[data-tab]').forEach(button => { const active = button.dataset.tab === state.tab; button.setAttribute('aria-selected', String(active)); button.tabIndex = active ? 0 : -1; });

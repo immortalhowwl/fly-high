@@ -43,7 +43,7 @@ test('every wallet opens a safe, prominent takeaway before fills, independent of
  for(const id of ['test-wallet','empty','missing']){
   a.go(ui.route('wallets','wallet',id));
   const children=a.nodes.dossier.children, i=children.findIndex(n=>n.className==='trader-takeaway');
-  assert.ok(i>=0);assert.equal(children[i].tagName,'section');assert.match(children[i].textContent,/Trader takeaway.*Observed:/);assert.match(children[i].textContent,/Not Financial Advice\.$/);
+  assert.ok(i>=0);assert.equal(children[i].tagName,'section');assert.match(children[i].textContent,/Trader takeaway/);assert.doesNotMatch(children[i].textContent,/Observed:|Interpretation:|Study:/);assert.match(children[i].textContent,/Not Financial Advice\.$/);
   assert.ok(i<children.findIndex(n=>n.textContent.startsWith('Observed fills')));
  }
 });
@@ -56,6 +56,24 @@ test('per-wallet history replaces fallback safely in the same top block with clo
  assert.doesNotMatch(top.textContent,/loaded source-labeled/);
  const details=children.find(n=>n.tagName==='details'&&n.textContent.includes('per-wallet historical'));
  assert.ok(details); assert.notEqual(details.open,true); assert.match(details.textContent,/<script>ALPHA<\/script>/);
+});
+test('display copy removes only structural signposts, keeping evidence and qualifiers',()=>{
+ const source='Observed — ALPHA: 9 buys and 2 sells. Interpretation: may suggest repeated entries, not a proven rule. Study: compare dated sales. Not Financial Advice.';
+ assert.equal(ui.readableTakeaway(source),'ALPHA: 9 buys and 2 sells. may suggest repeated entries, not a proven rule. To explore this, compare dated sales. Not Financial Advice.');
+ assert.equal(ui.readableTakeaway('Token Observed: source label remains.'),'Token Observed: source label remains.');
+});
+test('wallet evidence and fill rows are closed while an admitted experiment link stays visible',async()=>{
+ const a=visitor();await a.settle();
+ a.window.fetch=async path=>({ok:true,json:async()=>path==='/api/hypothesis-replay'?{status:'completed',evaluation_kind:'retrospective',seed_count:1,replay:{generations:[{flies:[{seed_origin:{provenance:{wallet:'test-wallet'}}}]}]}}:path==='/api/research'?fixture():null});
+ await a.nodes.refresh.onclick();await a.settle();a.go(ui.route('wallets','wallet','test-wallet'));await a.settle();
+ const children=a.nodes.dossier.children, details=children.filter(n=>n.tagName==='details');
+ assert.ok(details.some(n=>n.textContent.includes('wallet → experiment')));
+ assert.ok(details.some(n=>n.textContent.includes('supported rules')));
+ assert.ok(details.some(n=>n.textContent.includes('fixture-fill')));
+ assert.ok(details.every(n=>n.open!==true));
+ const watch=children.find(n=>n.tagName==='a'&&n.textContent==='Watch wallet experiment ↗');
+ assert.equal(watch?.href,'/?replay=hypothesis&wallet=test-wallet');
+ assert.ok(children.some(n=>n.tagName==='p'&&n.textContent.includes('exits assumed')));
 });
 test('formatting preserves signs, unknown values and zero',()=>{
   assert.equal(ui.money(-10,true),'−$10.00');assert.equal(ui.money(10,true),'+$10.00');assert.equal(ui.money(0,true),'$0.00');assert.equal(ui.money(null),'—');assert.equal(ui.money('10'),'—');assert.equal(ui.money(Infinity),'—');

@@ -16,7 +16,7 @@ test('public app loads once, uses no control API, isolates tabs and renders arch
  await a.click('generation');assert.equal(a.probe().generation,1);assert.equal(b.probe().generation,0);
  await a.click('reset');assert.equal(a.probe().generation,0);assert.equal(a.probe().running,false);
  assert.deepEqual(a.calls,['/api/state']);assert.deepEqual(b.calls,['/api/state']);
- assert.match(a.nodes['source-status'].textContent,/HISTORICAL ARCHIVE/);
+ assert.equal(a.nodes['source-status'].textContent,'Historical archive · not live');
  assert.match(a.nodes.connection.textContent,/LOCAL PLAYBACK/);
  assert.equal(a.nodes.error.textContent,'');
 });

@@ -27,6 +27,8 @@ test('existing wallet dossier safely exposes observations and an unevaluated can
  const a=visitor(fixture());await a.settle();const content=a.nodes.dossier.textContent;
  assert.ok(a.calls.includes('/api/behavior'));assert.match(content,/Observed buys: 3/);assert.match(content,/12 seconds/);assert.match(content,/source-estimated/i);assert.match(content,/<img onerror=evil\(\)>/);
  assert.match(content,/WH-fixture/);assert.match(content,/min_liquidity: 1000 → 2000/);assert.match(content,/not_run/);assert.match(content,/awaiting_matching_market_window/);assert.match(content,/1, 2, 3/);
+ const disclosure=a.nodes.dossier.children.find(n=>n.tagName==='details'&&n.textContent.includes('wallet → experiment'));
+ assert.ok(disclosure);assert.notEqual(disclosure.open,true);assert.match(disclosure.textContent,/WH-fixture|Observed buys/);
  assert.equal(ui.walletReplayLink(fixture(),'fixture-wallet'),null);
 });
 test('optional failure does not suppress research or strict replay messaging',async()=>{

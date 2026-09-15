@@ -24,6 +24,7 @@ test('home defaults to hypothesis, flies move without advancing results, Watch e
 test('simple English hierarchy keeps secondary controls and evidence closed, risk visible',()=>{
  const html=fs.readFileSync('web/index.html','utf8'),research=fs.readFileSync('web/research.html','utf8');
  assert.match(html,/<button data-action="run">Watch evolution<\/button>/);
+ assert.match(html,/<a class="hero-cta" href="#colony">Watch evolution ↓<\/a>/);
  assert.equal((html.match(/data-action="run"/g)||[]).length,1);
  assert.match(html,/<details class="playback-controls"><summary>Playback controls<\/summary>/);
  for(const action of ['pause','generation','replay','reset'])assert.match(html,new RegExp('<details class="playback-controls">[\\s\\S]*data-action="'+action+'"[\\s\\S]*<\\/details>'));
@@ -35,6 +36,16 @@ test('simple English hierarchy keeps secondary controls and evidence closed, ris
  assert.match(research,/<\/details>\s*<div id="status"/);
 });
 function completed(){const report=JSON.parse(fs.readFileSync('examples/copy.report.json','utf8'));const founder=report.generations[0].flies[0];founder.seed_origin={provenance:{kind:'wallet_inspired_hypothesis',wallet:'wallet-a',mapped_genes:{min_liquidity:{value:5000,event_ids:['real-source-event']}},default_genes:{hold:8}}};report.events.find(e=>e.kind==='birth'&&e.fly===founder.id).seed_origin=founder.seed_origin;return {status:'completed',evaluation_kind:'retrospective',seed_count:1,replay:report,limits:['Not forward validation'],overlap_note:'Wallet evidence overlaps final segment'};}
+test('mutation display explains all seven genes without changing their stored values',async()=>{
+ const a=visitor(completed());await settle();
+ const cases=[['lookback',5,8,'Price lookback: 5 observations → 8 observations'],['momentum',.01,.02,'Entry threshold: 1.00% → 2.00%'],['min_liquidity',1000,5000,'Minimum liquidity: $1,000.00 → $5,000.00'],['stop',.04,.05,'Stop-loss threshold: 4.00% → 5.00%'],['take',.08,.09,'Take-profit threshold: 8.00% → 9.00%'],['hold',20,30,'Holding limit: 20 observations → 30 observations'],['allocation',.2,.3,'Cash allocation: 20.00% → 30.00%']];
+ for(const [gene,before,after,label] of cases){
+  const output=vm.runInContext('mutationText('+JSON.stringify({gene,before,after})+')',a.context);
+  assert.ok(output.startsWith(label+'\n'),output);assert.ok(output.split('\n')[1].length>20);
+ }
+ assert.equal(a.nodes['source-status'].textContent,'Historical prices · assumed liquidity');
+ assert.doesNotMatch(a.nodes['replay-status'].textContent,/exits assumed/);
+});
 test('founder-gated link, never candidate-index admission',()=>{const {hypothesisReplayLink}=require('../web/research.js');const e=completed();e.candidates=[{provenance:{wallet:'rejected'}}];assert.equal(hypothesisReplayLink(e,'wallet-a'),'/?replay=hypothesis&wallet=wallet-a');assert.equal(hypothesisReplayLink(e,'rejected'),null);assert.equal(hypothesisReplayLink({...e,status:'blocked'},'wallet-a'),null);assert.equal(hypothesisReplayLink({...e,evaluation_kind:'forward'},'wallet-a'),null);});
 test('blocked, unavailable and malformed replay never load archive',async()=>{for(const [e,ok] of [[{status:'blocked',seed_count:0,replay:null,blocked_reasons:['Missing matching market']},true],[{},false],[{status:'completed',seed_count:1,replay:{}},true]]){const a=visitor(e,ok);await settle();assert.deepEqual(a.calls,['/api/hypothesis-replay']);assert.equal(a.probe().flies,0);assert.ok(a.buttons.every(b=>b.disabled));assert.equal(a.nodes['export-run'].href,'/api/hypothesis-replay');assert.equal(a.nodes['export-ledger'].href,'/api/hypothesis-replay');assert.equal(a.nodes['archive-link'].href,'/?replay=archive');assert.match(a.nodes.mode.textContent,/BLOCKED|UNAVAILABLE/);}});
 test('completed uses correct report, provenance, overlap, source, trades and parent navigation',async()=>{const e=completed(),a=visitor(e);await settle();assert.deepEqual(a.calls,['/api/hypothesis-replay']);assert.equal(a.probe().flies,e.replay.generations[0].flies.length);assert.equal(a.nodes.mode.textContent,'RETROSPECTIVE WALLET-INSPIRED SIMULATION');assert.match(a.nodes['replay-details'].textContent,/Wallet evidence overlaps final segment/);assert.match(a.nodes['raw-evidence'].textContent,/real-source-event/);assert.match(a.nodes['mode'].textContent,/RETROSPECTIVE/);assert.match(a.labels['.holdout .panel-title'][0].textContent,/RETROSPECTIVE SIMULATION/);assert.equal(a.labels['.market dt'][0].textContent,'Replay segments');assert.ok(a.nodes.trades.children.length);const child=e.replay.generations[1].flies.find(f=>f.parents?.length);assert.ok(child);vm.runInContext('state.cursor=state.report.split;selected='+JSON.stringify(child.id)+';update()',a.context);const parent=a.nodes.lineage.children.find(n=>n.tag==='button'&&n.textContent.startsWith('INSPECT PARENT'));assert.ok(parent);parent.onclick();assert.equal(a.probe().selected,child.parents[0]);});

@@ -36,7 +36,7 @@ async function pollWallet(){
   const wanted=new URLSearchParams(window.location.search).get('wallet');
   selected=r.generations[0].flies.find(f=>f.seed_origin?.provenance?.wallet===wanted)?.id||null;
   playback=new Playback(r);update();text('connection','● '+replayLabel+' · LOCAL PLAYBACK');text('error','');
-  walletStatus((wanted&&!r.generations[0].flies.some(f=>f.seed_origin?.provenance?.wallet===wanted)?'Requested wallet is not admitted; showing the separate admitted population. ':'')+'Simulation · '+e.seed_count+(hypothesisMode?' wallet-inspired founders':' admitted founders')+' · exits assumed. Click a fly to see its story.');
+  walletStatus((wanted&&!r.generations[0].flies.some(f=>f.seed_origin?.provenance?.wallet===wanted)?'Requested wallet is not admitted; showing the separate admitted population. ':'')+e.seed_count+(hypothesisMode?' wallet-inspired founders':' admitted founders')+'. Click a fly to see its story.');
   text('replay-details','Simulation, not wallet execution or recovered strategy. '+overlapText(e)+' '+(e.limits||[]).join(' '));
  }catch(e){state=null;playback=null;flies=[];text('mode',replayLabel+' / UNAVAILABLE');text('connection','NO SEEDED REPLAY');text('source-status','UNAVAILABLE · no archive substituted');text('phase','NO SIMULATION RUN');text('error',e.message);walletStatus('Precomputed wallet replay unavailable. '+e.message,true);}
 }
@@ -56,7 +56,7 @@ function update(){
  const sourceLabel=typeof r.source==='object'?r.source.symbol+' · '+r.source.provider+' · execution liquidity assumed':(r.source||'seeded offline fixture');
 
  const c=state.collector;
- text('source-status',seededMode?replayLabel+' · SIMULATED · HISTORICAL PRICES · ASSUMED LIQUIDITY · NOT LIVE':state.public?'HISTORICAL ARCHIVE · NOT LIVE · NO CONTINUOUS EVOLUTION':(c.fresh?'LIVE SNAPSHOTS':'SNAPSHOTS / '+c.status.toUpperCase())+' · '+c.verified_pairs+' PAIRS'+(c.observed_at?' · '+new Date(c.observed_at*1000).toISOString():''));
+ text('source-status',seededMode?'Historical prices · assumed liquidity':state.public?'Historical archive · not live':(c.fresh?'LIVE SNAPSHOTS':'SNAPSHOTS / '+c.status.toUpperCase())+' · '+c.verified_pairs+' PAIRS'+(c.observed_at?' · '+new Date(c.observed_at*1000).toISOString():''));
  $('tokens').replaceChildren();
  const observed=r.bars[bar];
  const input=element('div','','token');
@@ -78,6 +78,13 @@ function update(){
  if(state.cursor>=r.split*r.generations.length-1){for(const [name,result] of [['CHAMPION '+r.champion.id,r.holdout],...Object.entries(r.baselines)]){const row=element('div','','holdout-row');row.append(element('span',name.toUpperCase()),element('b',number(result.return*100)+'%'));$('holdout').append(row);}}
  else $('holdout').append(element('p','ARCHIVED RESULT — REVEALED AFTER PLAYBACK; AVAILABLE IN EXPORT'));
 }
+// Display labels follow engine.py's existing seven genes; exact values remain in Details.
+function mutationText(m){
+ const labels={lookback:['Price lookback','Observations used to measure the price change.'],momentum:['Entry threshold','Minimum price change needed to queue a buy.'],min_liquidity:['Minimum liquidity','Liquidity required before a buy can fill.'],stop:['Stop-loss threshold','Price drop from entry that queues a sell.'],take:['Take-profit threshold','Price rise from entry that queues a sell.'],hold:['Holding limit','Observations after entry before a sell is queued.'],allocation:['Cash allocation','Share of available cash budgeted for a buy, before fees and liquidity caps.']};
+ const [label,explanation]=labels[m.gene]||[m.gene.replaceAll('_',' '),'Changed strategy parameter.'];
+ const value=v=>['momentum','stop','take','allocation'].includes(m.gene)?number(v*100)+'%':m.gene==='min_liquidity'?'$'+number(v):['lookback','hold'].includes(m.gene)?number(v,0)+' observations':number(v,5);
+ return label+': '+value(m.before)+' → '+value(m.after)+'\n'+explanation;
+}
 function inspect(){
  const f=flies.find(x=>x.id===selected);if(!f)return;const d=f.result.decisions[bar],curve=f.result.curve.slice(0,bar+1);
  text('fly-title',f.id);text('fly-meta','BORN GEN '+f.born+' · '+(curve.at(-1).holding?'HOLDING SIMULATED POSITION':'WATCHING / FLAT'));
@@ -88,7 +95,7 @@ function inspect(){
   const target=state.report.generations.findIndex(g=>g.flies.some(x=>x.id===parent));
   if(target>=0){const button=element('button','INSPECT PARENT '+parent);button.onclick=()=>{playback?.control('pause');if(playback)playback.cursor=target*state.report.split;state.cursor=target*state.report.split;state.running=false;selected=parent;update();};$('lineage').append(button);}
  }
- text('changes',f.mutations?.length?f.mutations.map(m=>m.gene.replaceAll('_',' ')+': '+number(m.before,5)+' → '+number(m.after,5)).join('\n'):'No inherited changes. Starting parameters are unchanged.');
+ text('changes',f.mutations?.length?f.mutations.map(mutationText).join('\n\n'):(f.parents?.length?'No recorded mutations. Parameters inherited from parents.':'Starting parameters · no mutations yet.'));
  const visibleTrades=(f.result.trades||[]).filter(t=>t.timestamp<=d.timestamp);
  $('trades').replaceChildren();
  for(const trade of visibleTrades.slice(-5))$('trades').append(element('p',(trade.side||trade.action||'fill').toUpperCase()+' · '+(trade.price!=null?'$'+number(trade.price,8)+' · ':'')+new Date(trade.timestamp*1000).toISOString()));
